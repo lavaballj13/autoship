@@ -17,10 +17,49 @@
   #battleCanvas{background:#091722;width:100%;height:var(--battle-h);border:6px solid #0d2536;display:block;cursor:grab;}
   #legend{margin:4px auto 4px;width:var(--battle-w);font-size:11px;opacity:.65;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;}
   #shipStatsPanel{width:var(--battle-w);margin:6px auto 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;}
-  .shipStatsCard{background:#0e1f2d;border:2px solid #1f3d54;border-radius:8px;padding:6px 8px 8px;font-size:11px;position:relative;user-select:none;}
-  .shipStatsCard .title{font-weight:600;font-size:12px;margin-bottom:2px;}
-  .shipStatsCard .tier{font-size:10px;opacity:.8;}
-  .shipStatsCard.drag-card-hover{background:#142d3c;}
+.shipStatsCard {
+  background: #0e1f2d;
+  border: 2px solid #1f3d54;
+  border-radius: 8px;
+  padding: 6px 8px 8px;
+  font-size: 11px;
+  position: relative;
+  user-select: none;
+}
+
+/* Floating hover version for in-grid ship stat previews */
+.shipStatsCard.floating {
+  position: absolute;
+  pointer-events: none;   /* allow interactions to pass through */
+  z-index: 1000;
+}
+
+/* Stat table inside floating card */
+.shipStatsCard.floating table {
+  width: 100%;
+  font-size: 11px;
+  line-height: 1.25;
+}
+.shipStatsCard.floating td:first-child {
+  opacity: 0.75;
+  padding-right: 6px;
+}
+
+.shipStatsCard .title {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.shipStatsCard .tier {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.shipStatsCard.drag-card-hover {
+  background: #142d3c;
+}
+
   .upgradePulse{animation:upPulse 1s ease-out;}
   @keyframes upPulse{0%{box-shadow:0 0 0 0 rgba(79,243,180,.7);}70%{box-shadow:0 0 0 14px rgba(79,243,180,0);}100%{box-shadow:0 0 0 0 rgba(79,243,180,0);}}
   #shopScreen{width:var(--battle-w);display:flex;flex-direction:column;gap:14px;}
@@ -351,23 +390,42 @@ t.addEventListener('dragend', () => {
   t.addEventListener('mouseleave',  clearShipStats);           // NEW
   return t;
 }
-function showShipStats (ship) {
-  const p = document.getElementById('shipStatsPanel');
-  p.innerHTML = `
-    <div class="shipStatsCard">
-      <div class="title">${ship.name}</div>
-      <div class="tier">Tier ${ship.tier} (${ship.copies}/${CONFIG.fusionCopies})</div>
-      HP ${Math.round(ship.hp)}/${effectiveMaxHP(ship)}<br>
-      Dmg ${effectiveDamage(ship)}<br>
-      CD ${Math.round(fireCooldown(ship))} ms<br>
-      Range ${ship.rangeHex}<br>
-      <em>${ship.ability ? ship.ability.desc : ''}</em>
-    </div>`;
+function showShipStats (ship){
+  /* reuse / create a floating card once */
+  const layer = document.getElementById('tokenLayer');
+  let card = document.getElementById('hoverStats');
+  if(!card){
+    card = document.createElement('div');
+    card.id = 'hoverStats';
+    card.className = 'shipStatsCard floating';
+    layer.appendChild(card);
+  }
+
+  /* === build table === */
+  card.innerHTML = `
+    <div class="title">${ship.name}</div>
+    <table>
+      <tr><td>Tier</td><td>${ship.tier} (${ship.copies}/${CONFIG.fusionCopies})</td></tr>
+      <tr><td>HP</td><td>${Math.round(ship.hp)}/${effectiveMaxHP(ship)}</td></tr>
+      <tr><td>Dmg</td><td>${effectiveDamage(ship)}</td></tr>
+      <tr><td>CD</td><td>${Math.round(fireCooldown(ship))} ms</td></tr>
+      <tr><td>Range</td><td>${ship.rangeHex}</td></tr>
+      ${ship.ability ? `<tr><td>Ability</td><td>${ship.ability.desc}</td></tr>` : ''}
+    </table>`;
+
+  /* === position just right of the hex === */
+  const p = axialToPixel(ship.q, ship.r);
+  const hexW = CONFIG.hexRadius * Math.sqrt(3);
+  card.style.left = (p.x + hexW/2 + 10) + 'px';   // 10 px gap
+  card.style.top  = (p.y - 40) + 'px';            // slight upward offset
+  card.style.display = 'block';
 }
 
-function clearShipStats () {
-  document.getElementById('shipStatsPanel').innerHTML = '';
+function clearShipStats (){
+  const card = document.getElementById('hoverStats');
+  if(card) card.style.display = 'none';
 }
+
 
 function handleDropCell(c, r) {
   const existing = state.grid[r][c];
