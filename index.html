@@ -33,7 +33,7 @@
   .shopCard h4{margin:0;font-size:13px;}
   .shopCard small{font-size:10px;line-height:1.25;opacity:.9;}
   .shopCard .cost{position:absolute;top:4px;right:6px;font-size:11px;background:#143347;padding:2px 6px;border-radius:12px;}
-  #deploymentGrid{display:grid;grid-template-columns:repeat(4,170px);grid-template-rows:repeat(3,100px);gap:10px;}
+  #deploymentGrid{display:grid;grid-template-columns:repeat(6,170px);grid-template-rows:repeat(5,100px);gap:10px;}
   .deployCell{position:relative;border:2px dashed #25465f;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.75;overflow:hidden;transition:background .15s,border-color .15s;}
   .deployCell.filled{border-style:solid;opacity:1;}
   .deployCell.drag-hover{background:#142d3c;}
@@ -790,7 +790,7 @@ const canvas=document.getElementById('battleCanvas'); const ctx=canvas.getContex
   }
 }
 
-}
+
 
 function drawHexBG(){ ctx.save(); ctx.strokeStyle='#143047'; ctx.lineWidth=1; const maxQ=CONFIG.enemyBaseQ+2; for(let q=-1;q<=maxQ;q++){ for(let r=0;r<CONFIG.rows;r++){ const p=axialToPixel(q,r); if(p.x<40||p.x>canvas.width-40) continue; drawHex(p.x,p.y,CONFIG.hexRadius); } } ctx.restore(); }
 function drawHex(cx,cy,r){ ctx.beginPath(); for(let i=0;i<6;i++){ const a=(Math.PI/180)*(60*i -30); const x=cx+r*Math.cos(a), y=cy+r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); ctx.stroke(); }
