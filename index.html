@@ -131,7 +131,7 @@ const CONFIG = {
   RANGE_PIXEL_SCALE: Math.sqrt(3),
   baseGold: 10,
   rollCost: 1,
-  shopSlots: 6,
+  shopSlots: 4,
   roundTeamLimits: [3,4,5,6,7],
   incomePerRound: 9,
   specialtyTierBoost: {2:1.6,3:2.3},
@@ -272,18 +272,28 @@ function effectiveDamage(s){ return Math.round(s.baseDmg * s.dmgMod * Math.pow(C
 function fireCooldown(s){ return s.baseFireRate * s.fireRateMod * Math.pow(CONFIG.fireRateTierMult, s.tier-1); }
 
 /* Shop */
-function generateShop(){
-  if(state.shopLocked && state.shopChoices.length) return;
+function generateShop () {
+  if (state.shopLocked && state.shopChoices.length) return;
+
   state.shopChoices = [];
-  for(let i=0;i<CONFIG.shopSlots;i++) state.shopChoices.push(randChoice(SHIP_TYPES));
+  const picked = new Set();               // keep unique hulls
+
+  while (state.shopChoices.length < CONFIG.shopSlots) {
+    const t = randChoice(SHIP_TYPES);
+    if (!picked.has(t.hullId)) {
+      picked.add(t.hullId);
+      state.shopChoices.push(t);
+    }
+  }
   renderShop();
-  if(state.phase === 'shop') drawBattle();
+  if (state.phase === 'shop') drawBattle();
 }
+
 function canAfford(c){ return state.gold>=c; }
 function spendGold(c){ state.gold-=c; updateGold(); }
 
 let draggingShopIndex=null, dragType=null, draggingShipRef=null;
-function renderShop(){ const row=document.getElementById('shopRow'); row.innerHTML=''; state.shopChoices.forEach((t,i)=>{ const d=document.createElement('div'); d.className='shopCard'; if(!canAfford(t.cost)) d.classList.add('costTooHigh'); d.draggable=true; d.addEventListener('dragstart',e=>{ draggingShopIndex=i; dragType='shop'; e.dataTransfer.effectAllowed='copy'; }); d.addEventListener('dragend',()=>{ draggingShopIndex=null; dragType=null; }); d.innerHTML=`<h4>${t.name}</h4><div class='cost'>${t.cost}</div><small>${t.role}<br>HP ${t.baseHP} • Dmg ${t.baseDmg}<br>R ${t.rangeHex} • ${t.ability.desc}</small>`; row.appendChild(d); }); }
+function renderShop(){ const row=document.getElementById('shopRow'); row.innerHTML=''; state.shopChoices.forEach((t,i)=>{ if (!t) return; const d=document.createElement('div'); d.className='shopCard'; if(!canAfford(t.cost)) d.classList.add('costTooHigh'); d.draggable=true; d.addEventListener('dragstart',e=>{ draggingShopIndex=i; dragType='shop'; e.dataTransfer.effectAllowed='copy'; }); d.addEventListener('dragend',()=>{ draggingShopIndex=null; dragType=null; }); d.innerHTML=`<h4>${t.name}</h4><div class='cost'>${t.cost}</div><small>${t.role}<br>HP ${t.baseHP} • Dmg ${t.baseDmg}<br>R ${t.rangeHex} • ${t.ability.desc}</small>`; row.appendChild(d); }); }
 
 /* Grid */
 function renderGrid(){ const wrap=document.getElementById('deploymentGrid'); wrap.innerHTML=''; for(let r=0;r<CONFIG.deployRows;r++){ for(let c=0;c<CONFIG.deployCols;c++){ const cell=document.createElement('div'); cell.className='deployCell'; cell.dataset.c=c; cell.dataset.r=r; const ship=state.grid[r][c]; if(ship){ cell.classList.add('filled'); cell.appendChild(makeToken(ship)); cell.addEventListener('mousemove',e=> showShipTooltip(e,ship)); cell.addEventListener('mouseleave',hideTooltip); }
@@ -292,7 +302,49 @@ function renderGrid(){ const wrap=document.getElementById('deploymentGrid'); wra
   cell.addEventListener('drop', e=>{ e.preventDefault(); cell.classList.remove('drag-hover'); handleDropCell(c,r); });
   wrap.appendChild(cell); }} }
 
-function makeToken(ship){ const t=document.createElement('div'); t.className='token'; t.draggable=true; t.dataset.uid=ship.uid; t.innerHTML=`<div class='fusionBadge'>T${ship.tier} (${ship.copies}/${CONFIG.fusionCopies})</div><h5>${ship.name}</h5><div class='hp'>HP ${ship.hp}</div>`; t.addEventListener('dragstart',e=>{ dragType='grid'; draggingShipRef=ship; e.dataTransfer.effectAllowed='move'; }); t.addEventListener('dragend',()=>{ dragType=null; draggingShipRef=null; document.querySelectorAll('.deployCell').forEach(c=>c.classList.remove('drag-hover')); }); t.addEventListener('mousemove',e=> showShipTooltip(e,ship)); t.addEventListener('mouseleave',hideTooltip); return t; }
+function makeToken (ship) {
+  const t = document.createElement('div');
+  t.className = 'token';
+  t.draggable  = true;
+  t.dataset.uid = ship.uid;
+
+  /* ↓ JUST this single badge now */
+  t.innerHTML =
+    `<div class="fusionBadge">T${ship.tier} (${ship.copies}/${CONFIG.fusionCopies})</div>`;
+
+  /* keep the existing drag / hover listeners but
+     swap tooltip calls for our new stats‑panel helpers ↓ */
+  t.addEventListener('dragstart', e => {
+    dragType = 'grid';
+    draggingShipRef = ship;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  t.addEventListener('dragend', () => {
+    dragType = null;
+    draggingShipRef = null;
+  });
+
+  t.addEventListener('mouseenter', () => showShipStats(ship)); // NEW
+  t.addEventListener('mouseleave',  clearShipStats);           // NEW
+  return t;
+}
+function showShipStats (ship) {
+  const p = document.getElementById('shipStatsPanel');
+  p.innerHTML = `
+    <div class="shipStatsCard">
+      <div class="title">${ship.name}</div>
+      <div class="tier">Tier ${ship.tier} (${ship.copies}/${CONFIG.fusionCopies})</div>
+      HP ${Math.round(ship.hp)}/${effectiveMaxHP(ship)}<br>
+      Dmg ${effectiveDamage(ship)}<br>
+      CD ${Math.round(fireCooldown(ship))} ms<br>
+      Range ${ship.rangeHex}<br>
+      <em>${ship.ability ? ship.ability.desc : ''}</em>
+    </div>`;
+}
+
+function clearShipStats () {
+  document.getElementById('shipStatsPanel').innerHTML = '';
+}
 
 function handleDropCell(c, r) {
   const existing = state.grid[r][c];
@@ -355,6 +407,8 @@ function handleHexDrop(q, r) {
       if(!canAfford(tmpl.cost)){ flashStatus('Need gold.', true); return; }
       spendGold(tmpl.cost);
       tryAddCopy(existing);
+      state.shopChoices[draggingShopIndex] = null;   // bought → gone
+      renderShop();
     } else {
       if(currentTeamCountHex() >= state.teamLimit){ flashStatus('Team limit reached.', true); return; }
       if(!canAfford(tmpl.cost)){ flashStatus('Need gold.', true); return; }
