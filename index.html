@@ -719,31 +719,32 @@ function nextRound () {
   document.getElementById('teamLimit').textContent = state.teamLimit;
   document.getElementById('roundNum').textContent  = state.round;
   updateGold();
-/* ===== 3.  RESTORE SURVIVORS IN THEIR ORIGINAL SLOTS ===== */
+/* ===== 3.  RESTORE FLEET TO PRE‑BATTLE LAYOUT ===== */
 {
-  const newGrid = new Map();          // fresh map for post‑battle shop
+  const rebuilt = new Map();                    // new hex‑map for shop phase
 
-  state.gridHex.forEach((ship) => {
-    if (!ship.alive) return;          // died in the battle → leave behind
-
-    ship.q = ship.origQ;              // snap back to pre‑battle hex
+  state.gridHex.forEach(ship => {
+    /* snap back to the cell the player put it in pre‑battle */
+    ship.q = ship.origQ;
     ship.r = ship.origR;
-    const p  = axialToPixel(ship.q, ship.r);
+    const p = axialToPixel(ship.q, ship.r);
     ship.x = ship.targetX = p.x;
     ship.y = ship.targetY = p.y;
 
-    /* full heal & cleanse */
+    /* full revive & cleanse (works for wins *and* losses) */
+    ship.alive     = true;
     ship.hp        = effectiveMaxHP(ship);
     ship.shield    = 0;
     ship.burns     = [];
     ship.slowMult  = 1;
     ship.fireTimer = 0;
 
-    newGrid.set(slotKey(ship.q, ship.r), ship);
+    rebuilt.set(slotKey(ship.q, ship.r), ship);
   });
 
-  state.gridHex = newGrid;            // swap in the rebuilt map
+  state.gridHex = rebuilt;                      // swap in rebuilt board
 }
+
 
 /* ===== 4. shop refresh & UI ===== */
 flashStatus('Round ' + state.round + ' – New shop.');
