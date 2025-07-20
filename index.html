@@ -54,6 +54,13 @@
   #overlay h2{margin-top:0;}
   canvas{image-rendering:pixelated;}
   .fusionBadge{position:absolute;top:2px;left:4px;font-size:10px;background:#265c79;padding:2px 5px;border-radius:10px;}
+ /* draggable token overlay */
+#tokenLayer{
+  position:absolute;
+  inset:0;
+  pointer-events:none;   /* keeps existing canvas interactions */
+}
+
   .tooltip{position:absolute;pointer-events:none;z-index:2000;background:#102433;border:1px solid #2b5f86;padding:6px 8px;font-size:11px;border-radius:6px;max-width:220px;line-height:1.3;display:none;}
 </style>
 </head>
@@ -87,6 +94,7 @@
   <!-- BATTLE SCREEN -->
   <div id="battleWrapper">
     <canvas id="battleCanvas" width="1180" height="600"></canvas>
+    <div id="tokenLayer"></div>
     <div id="legend">
       <span id="battleHint">Ships advance toward nearest enemy line when out of range. Abilities trigger on conditions.</span>
       <span id="timer">00.0s</span>
@@ -352,6 +360,7 @@ function handleHexDrop(q, r) {
       if(!canAfford(tmpl.cost)){ flashStatus('Need gold.', true); return; }
       const ship = createShip(tmpl);
       placeShipAtHex(ship, q, r);
+      syncTokenLayer();
       spendGold(tmpl.cost);
       flashStatus(`${tmpl.name} deployed.`);
     }
@@ -368,6 +377,7 @@ function handleHexDrop(q, r) {
           fuseShip(existing);
         }
         state.gridHex.delete(originKey);
+        syncTokenLayer();
         flashStatus('Merged!', false);
       } else {
         placeShipAtHex(existing, draggingShipRef.q, draggingShipRef.r);
@@ -405,6 +415,8 @@ function startBattlePhase(){ if(state.gridHex.size === 0){ flashStatus('Need at 
 state.gridHex.forEach(s=>{
   s.side='player';
   const p = axialToPixel(s.q,s.r);
+  s.origQ = s.q;          // remember original slot
+  s.origR = s.r;
   s.x = s.targetX = p.x;
   s.y = s.targetY = p.y;
   s.alive = true;
@@ -707,54 +719,35 @@ function nextRound () {
   document.getElementById('teamLimit').textContent = state.teamLimit;
   document.getElementById('roundNum').textContent  = state.round;
   updateGold();
-
-  /* =========================================================
-     3.  REBUILD PLAYER GRID ---------------------------------
-     ========================================================= */
-
-  /* ---- (a) survivors from previous battle ---- */
-  const survivors = state.battleShips
-        .filter(s => s.side === 'player' && s.alive)
-        .slice(0, state.teamLimit);                // safety check
-
-  /* ---- (b) clear the placement map ---- */
-  state.gridHex.clear();
-
-  /* ---- (c) heal / cleanse & drop into fresh slots ---- */
-  let slotIndex = 0;
-  survivors.forEach(s => {
-
-    /* full heal & status reset */
-    s.alive     = true;
-    s.hp        = effectiveMaxHP(s);
-    s.shield    = 0;
-    s.burns     = [];
-    s.slowMult  = 1;
-    s.fireTimer = 0;
-
-    /* pick next legal shop slot (left half) */
-    const slot  = SHOP_HEX_SLOTS[slotIndex++ % SHOP_HEX_SLOTS.length];
-    placeShipAtHex(s, slot.q, slot.r);
-  });
-
-  /* ---- (d) shrink / grow team size if needed ---- */
-  while (state.gridHex.size > state.teamLimit) {
-    // simple strategy: remove last added
-    const lastKey = Array.from(state.gridHex.keys()).pop();
-    state.gridHex.delete(lastKey);
+/* ===== 3.  RESTORE SURVIVORS IN THEIR ORIGINAL SLOTS ===== */
+state.gridHex.forEach((ship, key) => {
+  if (!ship.alive) {               // died last battle → clear slot
+    state.gridHex.delete(key);
+    return;
   }
+  ship.q = ship.origQ;             // snap back to shop hex
+  ship.r = ship.origR;
+  const p  = axialToPixel(ship.q, ship.r);
+  ship.x = ship.targetX = p.x;     // put sprite back
+  ship.y = ship.targetY = p.y;
 
-  /* ---- (e) reset battle data containers ---- */
-  state.battleShips = [];
-  state.projectiles = [];
+  /* full heal & cleanse */
+  ship.hp        = effectiveMaxHP(ship);
+  ship.shield    = 0;
+  ship.burns     = [];
+  ship.slowMult  = 1;
+  ship.fireTimer = 0;
+});
 
-  /* ===== 4. shop refresh ===== */
-  flashStatus('Round ' + state.round + ' – New shop.');
-  state.shopLocked = false;
-  document.getElementById('btnLock').textContent = 'Lock';
-  generateShop();
-  updateBattleBtn();
-}
+/* ===== 4. shop refresh & UI ===== */
+flashStatus('Round ' + state.round + ' – New shop.');
+state.shopLocked = false;
+document.getElementById('btnLock').textContent = 'Lock';
+generateShop();
+updateBattleBtn();
+syncTokenLayer();        // keep overlay fresh
+}   //  <‑‑‑‑ CLOSES nextRound()
+
 
 
 function resetGame(){ state.round=1; state.gold=CONFIG.baseGold; state.lives=CONFIG.lifePool; state.wins=0; state.gameOver=false; state.grid=createGrid(); state.gridHex.clear(); document.getElementById('teamLimit').textContent=CONFIG.roundTeamLimits[0]; document.getElementById('roundNum').textContent=1; updateLivesWins(); updateGold(); generateShop(); generateEnemyPreview(); renderShop();  updateBattleBtn(); flashStatus('New game started.',false); document.getElementById('phaseIndicator').textContent='SHOP'; document.querySelector('header h1').textContent='Fleet Battle – Shop Phase'; document.getElementById('battleWrapper').style.display='block'; document.getElementById('shopScreen').style.display='block'; }
@@ -770,14 +763,33 @@ function hideTooltip(){ tooltipEl.style.display='none'; }
 
 /* Timer */
 function updateTimer(){ document.getElementById('timer').textContent=(state.elapsed/1000).toFixed(1)+'s'; }
+  
+function syncTokenLayer(){
+  if (state.phase !== 'shop') {        // hide during battle
+    document.getElementById('tokenLayer').innerHTML = ''; return;
+  }
+  const layer = document.getElementById('tokenLayer');
+  layer.innerHTML = '';
+  state.gridHex.forEach(ship => {
+    const tok = makeToken(ship);               // re‑uses existing DOM maker
+    const pos = axialToPixel(ship.q, ship.r);
+    tok.style.position = 'absolute';
+    tok.style.left  = (pos.x - 75) + 'px';     // 75 = token half‑width
+    tok.style.top   = (pos.y - 20) + 'px';     // vertical tweak
+    layer.appendChild(tok);
+  });
+}
 
+  
 /* Rendering Battle */
 const canvas=document.getElementById('battleCanvas'); const ctx=canvas.getContext('2d');function drawBattle(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   drawHexBG();
-  if(state.phase === 'shop'){
-    drawShopPlacementLayer();
+  if (state.phase === 'shop'){
+      drawShopPlacementLayer();
+      syncTokenLayer();                // <‑‑ keep overlay in‑sync
   } else {
+
     if(document.getElementById('rangeToggle').checked) drawRanges();
     drawProjectiles();
   }
@@ -857,6 +869,8 @@ window.addEventListener('DOMContentLoaded', () => {
   updateGold();
   updateLivesWins();
   updateBattleBtn();
+  syncTokenLayer();
+
 
   /* ---------- canvas drag‑and‑drop for hex placement ---------- */
   const canvasEl = document.getElementById('battleCanvas');
