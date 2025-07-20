@@ -13,7 +13,7 @@
   button{background:var(--accent);border:none;color:#04131f;padding:6px 12px;font-weight:600;border-radius:6px;cursor:pointer;font-size:13px;}
   button:disabled{opacity:.45;cursor:not-allowed;}
   #mainScreens{flex:1;display:flex;flex-direction:column;align-items:center;padding:10px 0 24px;}
-  #battleWrapper{margin:6px auto 0;width:var(--battle-w);position:relative;display:block;}
+  #battleWrapper{margin:6px auto 0;width:var(--battle-w);position:relative;display:none;}
   #battleCanvas{background:#091722;width:100%;height:var(--battle-h);border:6px solid #0d2536;display:block;cursor:grab;}
   #legend{margin:4px auto 4px;width:var(--battle-w);font-size:11px;opacity:.65;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;}
   #shipStatsPanel{width:var(--battle-w);margin:6px auto 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;}
@@ -33,27 +33,12 @@
   .shopCard h4{margin:0;font-size:13px;}
   .shopCard small{font-size:10px;line-height:1.25;opacity:.9;}
   .shopCard .cost{position:absolute;top:4px;right:6px;font-size:11px;background:#143347;padding:2px 6px;border-radius:12px;}
-  #deploymentGrid{display:grid;grid-template-columns:repeat(6,170px);grid-template-rows:repeat(5,100px);gap:10px;}
+  #deploymentGrid{display:grid;grid-template-columns:repeat(4,170px);grid-template-rows:repeat(3,100px);gap:10px;}
   .deployCell{position:relative;border:2px dashed #25465f;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.75;overflow:hidden;transition:background .15s,border-color .15s;}
   .deployCell.filled{border-style:solid;opacity:1;}
   .deployCell.drag-hover{background:#142d3c;}
   #benchLabel{font-size:12px;opacity:.8;margin-top:4px;}
-  .token{
-  background:#103042;
-  border:2px solid #226082;
-  border-radius:10px;
-  padding:4px 6px;
-  font-size:10px;
-  display:flex;
-  flex-direction:column;
-  gap:2px;
-  width:150px;
-
-  /* ▼ NEW: make the whole card draggable, not just the badge */
-  height:90px;                 /* roughly the hex height */
-  align-items:center;
-  justify-content:center;
-}
+  .token{background:#103042;border:2px solid #226082;border-radius:10px;padding:4px 6px;font-size:10px;display:flex;flex-direction:column;gap:2px;width:150px;cursor:grab;user-select:none;position:relative;}
   .token h5{margin:0;font-size:12px;}
   .token .hp{font-size:10px;opacity:.8;}
   .rarity-common{border-color:#33536e;}
@@ -69,13 +54,6 @@
   #overlay h2{margin-top:0;}
   canvas{image-rendering:pixelated;}
   .fusionBadge{position:absolute;top:2px;left:4px;font-size:10px;background:#265c79;padding:2px 5px;border-radius:10px;}
- /* draggable token overlay */
-#tokenLayer{
-  position:absolute;
-  inset:0;
-  pointer-events:none;   /* keeps existing canvas interactions */
-}
-
   .tooltip{position:absolute;pointer-events:none;z-index:2000;background:#102433;border:1px solid #2b5f86;padding:6px 8px;font-size:11px;border-radius:6px;max-width:220px;line-height:1.3;display:none;}
 </style>
 </head>
@@ -103,13 +81,13 @@
       <div style="font-size:12px;opacity:.85;">Round <span id="roundNum">1</span> • Team Limit <span id="teamLimit">3</span> • Goal: 5 Wins / 5 Lives</div>
     </div>
     <div id="shopRow"></div>
-
+    <div id="benchLabel">Deployment Grid (4 × 3)</div>
+    <div id="deploymentGrid"></div>
   </div>
 
   <!-- BATTLE SCREEN -->
   <div id="battleWrapper">
     <canvas id="battleCanvas" width="1180" height="600"></canvas>
-    <div id="tokenLayer"></div>
     <div id="legend">
       <span id="battleHint">Ships advance toward nearest enemy line when out of range. Abilities trigger on conditions.</span>
       <span id="timer">00.0s</span>
@@ -132,8 +110,8 @@
 const CONFIG = {
   hexRadius: 44,
   rows: 5,
-  deployCols: 6,
-  deployRows: 5,
+  deployCols: 4,
+  deployRows: 3,
   boardOffsetX: 120,
   boardOffsetY: 100,
   projectileSpeed: 520,
@@ -143,10 +121,11 @@ const CONFIG = {
   fusionCopies: 3,
   damageFlash: 120,
   maxTier: 3,
-  RANGE_PIXEL_SCALE: Math.sqrt(3),
+  advanceStopGap: 1,
+  RANGE_PIXEL_SCALE: 0.95,
   baseGold: 10,
   rollCost: 1,
-  shopSlots: 4,
+  shopSlots: 6,
   roundTeamLimits: [3,4,5,6,7],
   incomePerRound: 9,
   specialtyTierBoost: {2:1.6,3:2.3},
@@ -170,61 +149,21 @@ const SHIP_TYPES = [
 
 /* STATE */
 const state = {
-  phase: 'shop',
-  round: 1,
-  gold: CONFIG.baseGold,
-  shopLocked: false,
-  shopChoices: [],
-  // legacy rectangular grid (kept for compatibility if any old code still references it)
-  grid: createGrid(),
+  phase:'shop',
+  round:1,
+  gold:CONFIG.baseGold,
+  shopLocked:false,
+  shopChoices:[],
+  grid:createGrid(),
   teamLimit: CONFIG.roundTeamLimits[0],
-  battleShips: [],
-  projectiles: [],
-  effects: [],
-  startTime: 0,
-  lastTime: 0,
-  elapsed: 0,
-  wins: 0,
-  lives: CONFIG.lifePool,
-  gameOver: false,
-
-  // NEW: direct hex placement store used during SHOP phase
-  // Key: "q,r"  Value: ship object positioned at that axial coordinate
-  gridHex: new Map()
+  battleShips:[], projectiles:[], effects:[],
+  startTime:0,lastTime:0,elapsed:0,
+  wins:0, lives:CONFIG.lifePool,
+  gameOver:false
 };
+let uidCounter=1;
 
-  /* ---------- upcoming enemy preview ---------- */
-const previewEnemies = [];   // filled each round
-
-function generateEnemyPreview(){
-  previewEnemies.length = 0;
-  const cols = [CONFIG.deployCols + 1, CONFIG.deployCols + 3];   // two columns in “white” zone
-  const rows = [1, 2, 3];                                        // middle three rows
-  cols.forEach((q,i) => {
-    const t = randChoice(SHIP_TYPES);
-    const ship = createShip(t);
-    ship.q = q;
-    ship.r = rows[i];
-    previewEnemies.push(ship);
-  });
-}
-
-let uidCounter = 1;
-let hoverHex = null; // shop-phase highlighted hex
-
-function createGrid() {
-  // Kept only so existing functions referencing state.grid don't break;
-  // primary placement now uses state.gridHex (hex coordinates).
-  const g = [];
-  for (let r = 0; r < CONFIG.deployRows; r++) {
-    const row = [];
-    for (let c = 0; c < CONFIG.deployCols; c++) row.push(null);
-    g.push(row);
-  }
-  return g;
-}
-
-/* Utility Functions */
+function createGrid(){ const g=[]; for(let r=0;r<CONFIG.deployRows;r++){ const row=[]; for(let c=0;c<CONFIG.deployCols;c++) row.push(null); g.push(row);} return g; }
 
 /* Utility Functions */
 function randChoice(a){return a[Math.floor(Math.random()*a.length)];}
@@ -232,54 +171,13 @@ function axialToPixel(q,r){ const size=CONFIG.hexRadius; const x = size * Math.s
 function hexDistanceQR(a,b){ const ax=a.q, az=a.r, ay=-ax-az, bx=b.q, bz=b.r, by=-bx-bz; return Math.max(Math.abs(ax-bx), Math.abs(ay-by), Math.abs(az-bz)); }
 function clamp(v,min,max){return v<min?min:v>max?max:v;}
 function hexToRgb(h){ return { r:parseInt(h.slice(1,3),16), g:parseInt(h.slice(3,5),16), b:parseInt(h.slice(5,7),16)}; }
-function blend(a,b,t){ const A=hexToRgb(a),B=hexToRgb(b); return `rgb(${Math.round(A.r+(B.r-A.r)*t)},${Math.round(A.g+(B.g-A.g)*t)},${Math.round(A.b+(B.b-A.b)*t)})`; }
-
-/* ---- Hex Shop Placement Helpers ---- */
-const SHOP_HEX_SLOTS = (() => {
-  const slots = [];
-  for (let q = 0; q < CONFIG.deployCols; q++)       // 0 … 5
-    for (let r = 0; r < CONFIG.deployRows; r++)     // 0 … 4
-      slots.push({ q, r });
-  return slots;
-})();
-
-
-function slotKey(q,r){ return q + ',' + r; }
-function getShipAtHex(q,r){ return state.gridHex.get(slotKey(q,r)); }
-function placeShipAtHex(ship, q, r){
-  ship.q = q; ship.r = r;
-  const p = axialToPixel(q,r);
-  ship.x = ship.targetX = p.x;
-  ship.y = ship.targetY = p.y;
-  state.gridHex.set(slotKey(q,r), ship);
-}
-function removeShipAtHex(q,r){ state.gridHex.delete(slotKey(q,r)); }
-function currentTeamCountHex(){ return state.gridHex.size; }
-
-function isLegalShopHex(q,r){
-  return SHOP_HEX_SLOTS.some(s => s.q===q && s.r===r);
-}
-
-function screenToHex(px, py){
-  const size = CONFIG.hexRadius;
-  const x = px - CONFIG.boardOffsetX;
-  const y = py - CONFIG.boardOffsetY;
-  const qf = (Math.sqrt(3)/3 * x - 1/3 * y) / size;
-  const rf = (2/3 * y) / size;
-  let xf = qf, zf = rf, yf = -xf - zf;
-  let rx = Math.round(xf), ry = Math.round(yf), rz = Math.round(zf);
-  const xDiff = Math.abs(rx - xf), yDiff = Math.abs(ry - yf), zDiff = Math.abs(rz - zf);
-  if (xDiff > yDiff && xDiff > zDiff) rx = -ry - rz;
-  else if (yDiff > zDiff) ry = -rx - rz;
-  else rz = -rx - ry;
-  return { q: rx, r: rz };
-}
+function blend(a,b,t){ const A=hexToRgb(a),B=hexToRgb(b); return rgb(${Math.round(A.r+(B.r-A.r)*t)},${Math.round(A.g+(B.g-A.g)*t)},${Math.round(A.b+(B.b-A.b)*t)}); }
 
 /* Ship Creation */
 function createShip(t){ return { uid:'P'+(uidCounter++), side:'player', type:t.hullId, name:t.name, color:t.color, baseHP:t.baseHP, baseDmg:t.baseDmg, baseFireRate:t.fireRate, rangeHex:t.rangeHex, role:t.role, tier:1, copies:1, dmgMod:1, fireRateMod:1, hpMod:1, mods:[], hp:t.baseHP, fireTimer:0, flashT:0, alive:true, q:0,r:0,x:0,y:0,targetX:0,targetY:0, ability:JSON.parse(JSON.stringify(t.ability)), shape:t.shape, slowMult:1, burns:[], armorShred:0, shield:0 }; }
 
 function fuseShip(ship){ if(ship.tier>=CONFIG.maxTier) return; ship.tier++; ship.copies=1; ship.hpMod*=CONFIG.hpTierMult; ship.dmgMod*=CONFIG.dmgTierMult; ship.fireRateMod*=CONFIG.fireRateTierMult; const scale=CONFIG.specialtyTierBoost[ship.tier]||1.4; const a=ship.ability; if(a){ if(a.value!==undefined) a.value = +(a.value*scale).toFixed(2); if(a.jumps) a.jumps = Math.round(a.jumps*(1+(scale-1)*0.7)); } ship.hp=effectiveMaxHP(ship); pulseShipCard(ship.uid); flashStatus(ship.name+" Tier "+ship.tier+"!",false); }
-function tryAddCopy(ship){ ship.copies++; if(ship.copies>=CONFIG.fusionCopies){ fuseShip(ship);} else { pulseShipCard(ship.uid); flashStatus(`${ship.name} copy (${ship.copies}/${CONFIG.fusionCopies})`, false);} }
+function tryAddCopy(ship){ ship.copies++; if(ship.copies>=CONFIG.fusionCopies){ fuseShip(ship);} else { pulseShipCard(ship.uid); flashStatus(${ship.name} copy (${ship.copies}/${CONFIG.fusionCopies}), false);} }
 
 /* Stat Helpers */
 function effectiveMaxHP(s){ return Math.round(s.baseHP * s.hpMod * Math.pow(CONFIG.hpTierMult, s.tier-1)); }
@@ -287,28 +185,12 @@ function effectiveDamage(s){ return Math.round(s.baseDmg * s.dmgMod * Math.pow(C
 function fireCooldown(s){ return s.baseFireRate * s.fireRateMod * Math.pow(CONFIG.fireRateTierMult, s.tier-1); }
 
 /* Shop */
-function generateShop () {
-  if (state.shopLocked && state.shopChoices.length) return;
-
-  state.shopChoices = [];
-  const picked = new Set();               // keep unique hulls
-
-  while (state.shopChoices.length < CONFIG.shopSlots) {
-    const t = randChoice(SHIP_TYPES);
-    if (!picked.has(t.hullId)) {
-      picked.add(t.hullId);
-      state.shopChoices.push(t);
-    }
-  }
-  renderShop();
-  if (state.phase === 'shop') drawBattle();
-}
-
+function generateShop(){ if(state.shopLocked && state.shopChoices.length) return; state.shopChoices=[]; for(let i=0;i<CONFIG.shopSlots;i++) state.shopChoices.push(randChoice(SHIP_TYPES)); renderShop(); }
 function canAfford(c){ return state.gold>=c; }
 function spendGold(c){ state.gold-=c; updateGold(); }
 
 let draggingShopIndex=null, dragType=null, draggingShipRef=null;
-function renderShop(){ const row=document.getElementById('shopRow'); row.innerHTML=''; state.shopChoices.forEach((t,i)=>{ if (!t) return; const d=document.createElement('div'); d.className='shopCard'; if(!canAfford(t.cost)) d.classList.add('costTooHigh'); d.draggable=true; d.addEventListener('dragstart',e=>{ draggingShopIndex=i; dragType='shop'; e.dataTransfer.effectAllowed='copy'; }); d.addEventListener('dragend',()=>{ draggingShopIndex=null; dragType=null; }); d.innerHTML=`<h4>${t.name}</h4><div class='cost'>${t.cost}</div><small>${t.role}<br>HP ${t.baseHP} • Dmg ${t.baseDmg}<br>R ${t.rangeHex} • ${t.ability.desc}</small>`; row.appendChild(d); }); }
+function renderShop(){ const row=document.getElementById('shopRow'); row.innerHTML=''; state.shopChoices.forEach((t,i)=>{ const d=document.createElement('div'); d.className='shopCard'; if(!canAfford(t.cost)) d.classList.add('costTooHigh'); d.draggable=true; d.addEventListener('dragstart',e=>{ draggingShopIndex=i; dragType='shop'; e.dataTransfer.effectAllowed='copy'; }); d.addEventListener('dragend',()=>{ draggingShopIndex=null; dragType=null; }); d.innerHTML=<h4>${t.name}</h4><div class='cost'>${t.cost}</div><small>${t.role}<br>HP ${t.baseHP} • Dmg ${t.baseDmg}<br>R ${t.rangeHex} • ${t.ability.desc}</small>; row.appendChild(d); }); }
 
 /* Grid */
 function renderGrid(){ const wrap=document.getElementById('deploymentGrid'); wrap.innerHTML=''; for(let r=0;r<CONFIG.deployRows;r++){ for(let c=0;c<CONFIG.deployCols;c++){ const cell=document.createElement('div'); cell.className='deployCell'; cell.dataset.c=c; cell.dataset.r=r; const ship=state.grid[r][c]; if(ship){ cell.classList.add('filled'); cell.appendChild(makeToken(ship)); cell.addEventListener('mousemove',e=> showShipTooltip(e,ship)); cell.addEventListener('mouseleave',hideTooltip); }
@@ -317,153 +199,12 @@ function renderGrid(){ const wrap=document.getElementById('deploymentGrid'); wra
   cell.addEventListener('drop', e=>{ e.preventDefault(); cell.classList.remove('drag-hover'); handleDropCell(c,r); });
   wrap.appendChild(cell); }} }
 
-function makeToken (ship) {
-  const t = document.createElement('div');
-  t.className = 'token';
-  t.draggable  = true;
-  t.style.pointerEvents = 'auto';
-  t.dataset.uid = ship.uid;
+function makeToken(ship){ const t=document.createElement('div'); t.className='token'; t.draggable=true; t.dataset.uid=ship.uid; t.innerHTML=<div class='fusionBadge'>T${ship.tier} (${ship.copies}/${CONFIG.fusionCopies})</div><h5>${ship.name}</h5><div class='hp'>HP ${ship.hp}</div>; t.addEventListener('dragstart',e=>{ dragType='grid'; draggingShipRef=ship; e.dataTransfer.effectAllowed='move'; }); t.addEventListener('dragend',()=>{ dragType=null; draggingShipRef=null; document.querySelectorAll('.deployCell').forEach(c=>c.classList.remove('drag-hover')); }); t.addEventListener('mousemove',e=> showShipTooltip(e,ship)); t.addEventListener('mouseleave',hideTooltip); return t; }
 
-    /* ↓ JUST this single badge now */
-  t.innerHTML =
-    `<div class="fusionBadge">T${ship.tier}</div>`;   // only show tier
-
-
-  /* keep the existing drag / hover listeners but
-     swap tooltip calls for our new stats‑panel helpers ↓ */
-  t.addEventListener('dragstart', e => {
-    dragType = 'grid';
-    draggingShipRef = ship;
-    e.dataTransfer.effectAllowed = 'move';
-    t.style.pointerEvents = 'none';
- });
-  t.addEventListener('dragend', () => {
-    dragType = null;
-    draggingShipRef = null;
-    t.style.pointerEvents = 'auto';
-  });
-
-  t.addEventListener('mouseenter', () => showShipStats(ship)); // NEW
-  t.addEventListener('mouseleave',  clearShipStats);           // NEW
-  return t;
+function handleDropCell(c,r){ const existing=state.grid[r][c]; if(dragType==='shop' && draggingShopIndex!==null){ const tmpl=state.shopChoices[draggingShopIndex]; if(!tmpl) return; if(existing){ if(existing.type!==tmpl.hullId){ flashStatus('Different hull.',true); return; } if(!canAfford(tmpl.cost)){ flashStatus('Need gold.',true); return; } spendGold(tmpl.cost); tryAddCopy(existing); renderGrid(); }
+  else { if(teamCount()>=state.teamLimit){ flashStatus('Team limit reached.',true); return; } if(!canAfford(tmpl.cost)){ flashStatus('Need gold.',true); return; } state.grid[r][c]=createShip(tmpl); spendGold(tmpl.cost); flashStatus(${tmpl.name} deployed.); renderGrid(); updateBattleBtn(); }}
+ else if(dragType==='grid' && draggingShipRef){ if(existing && existing!==draggingShipRef){ if(existing.type===draggingShipRef.type){ existing.copies += draggingShipRef.copies; while(existing.copies>=CONFIG.fusionCopies){ existing.copies-=CONFIG.fusionCopies; fuseShip(existing);} removeShipFromGrid(draggingShipRef.uid); flashStatus('Merged!',false); } else { swapShips(existing, draggingShipRef); } } else if(!existing){ moveShipTo(draggingShipRef,c,r); } renderGrid(); updateBattleBtn(); }
 }
-function showShipStats (ship) {
-  const p = document.getElementById('shipStatsPanel');
-  p.innerHTML = `
-    <div class="shipStatsCard">
-      <div class="title">${ship.name}</div>
-      <div class="tier">Tier ${ship.tier} (${ship.copies}/${CONFIG.fusionCopies})</div>
-      HP ${Math.round(ship.hp)}/${effectiveMaxHP(ship)}<br>
-      Dmg ${effectiveDamage(ship)}<br>
-      CD ${Math.round(fireCooldown(ship))} ms<br>
-      Range ${ship.rangeHex}<br>
-      <em>${ship.ability ? ship.ability.desc : ''}</em>
-    </div>`;
-}
-
-function clearShipStats () {
-  document.getElementById('shipStatsPanel').innerHTML = '';
-}
-
-function handleDropCell(c, r) {
-  const existing = state.grid[r][c];
-
-  /* ---------- dragging a SHOP card onto the grid ---------- */
-  if (dragType === 'shop' && draggingShopIndex !== null) {
-    const tmpl = state.shopChoices[draggingShopIndex];
-    if (!tmpl) return;
-
-    if (existing) {
-      /* same hull → add copy / fuse */
-      if (existing.type !== tmpl.hullId) { flashStatus('Different hull.', true); return; }
-      if (!canAfford(tmpl.cost))        { flashStatus('Need gold.',   true);  return; }
-      spendGold(tmpl.cost);
-      tryAddCopy(existing);
-    } else {
-      /* empty cell → place new ship */
-      if (teamCount() >= state.teamLimit) { flashStatus('Team limit reached.', true); return; }
-      if (!canAfford(tmpl.cost))          { flashStatus('Need gold.',          true); return; }
-      state.grid[r][c] = createShip(tmpl);
-      spendGold(tmpl.cost);
-      flashStatus(`${tmpl.name} deployed.`);
-    }
-    updateBattleBtn();
-
-  /* ---------- dragging an EXISTING ship token ---------- */
-  } else if (dragType === 'grid' && draggingShipRef) {
-    if (existing && existing !== draggingShipRef) {
-      if (existing.type === draggingShipRef.type) {
-        /* same hull → merge / fuse */
-        existing.copies += draggingShipRef.copies;
-        while (existing.copies >= CONFIG.fusionCopies) {
-          existing.copies -= CONFIG.fusionCopies;
-          fuseShip(existing);
-        }
-        removeShipFromGrid(draggingShipRef.uid);
-        flashStatus('Merged!', false);
-      } else {
-        /* different hull → swap positions */
-        swapShips(existing, draggingShipRef);
-      }
-    } else if (!existing) {
-      /* empty cell → move ship */
-      moveShipTo(draggingShipRef, c, r);
-    }
-    updateBattleBtn();
-  }
-}
-
-/* ---------------------------------------------------------- */
-/*  NEXT FUNCTION STARTS HERE – keep this just as it is       */
-function handleHexDrop(q, r) {
-
-  if(dragType === 'shop' && draggingShopIndex !== null){
-    const tmpl = state.shopChoices[draggingShopIndex];
-    if(!tmpl) return;
-    const existing = getShipAtHex(q,r);
-    if(existing){
-      if(existing.type !== tmpl.hullId){ flashStatus('Different hull.', true); return; }
-      if(!canAfford(tmpl.cost)){ flashStatus('Need gold.', true); return; }
-      spendGold(tmpl.cost);
-      tryAddCopy(existing);
-      state.shopChoices[draggingShopIndex] = null;   // bought → gone
-      renderShop();
-    } else {
-      if(currentTeamCountHex() >= state.teamLimit){ flashStatus('Team limit reached.', true); return; }
-      if(!canAfford(tmpl.cost)){ flashStatus('Need gold.', true); return; }
-      const ship = createShip(tmpl);
-      placeShipAtHex(ship, q, r);
-      syncTokenLayer();
-      spendGold(tmpl.cost);
-      flashStatus(`${tmpl.name} deployed.`);
-    }
-    renderShop();
-    updateBattleBtn();
-  } else if(dragType === 'grid' && draggingShipRef){
-    const existing = getShipAtHex(q,r);
-    const originKey = slotKey(draggingShipRef.q, draggingShipRef.r);
-    if(existing && existing !== draggingShipRef){
-      if(existing.type === draggingShipRef.type){
-        existing.copies += draggingShipRef.copies;
-        while(existing.copies >= CONFIG.fusionCopies){
-          existing.copies -= CONFIG.fusionCopies;
-          fuseShip(existing);
-        }
-        state.gridHex.delete(originKey);
-        syncTokenLayer();
-        flashStatus('Merged!', false);
-      } else {
-        placeShipAtHex(existing, draggingShipRef.q, draggingShipRef.r);
-        placeShipAtHex(draggingShipRef, q, r);
-      }
-    } else {
-      state.gridHex.delete(originKey);
-      placeShipAtHex(draggingShipRef, q, r);
-    }
-    updateBattleBtn();
-  }
-}
-
 
 function removeShipFromGrid(uid){ for(let r=0;r<CONFIG.deployRows;r++) for(let c=0;c<CONFIG.deployCols;c++) if(state.grid[r][c] && state.grid[r][c].uid===uid) state.grid[r][c]=null; }
 function findShipCell(uid){ for(let r=0;r<CONFIG.deployRows;r++) for(let c=0;c<CONFIG.deployCols;c++) if(state.grid[r][c] && state.grid[r][c].uid===uid) return {r,c}; return null; }
@@ -475,29 +216,14 @@ function teamCount(){ let n=0; for(let r=0;r<CONFIG.deployRows;r++) for(let c=0;
 function updateGold(){ document.getElementById('gold').textContent='Gold: '+state.gold; }
 function updateLivesWins(){ document.getElementById('lives').textContent='Lives: '+state.lives; document.getElementById('wins').textContent='Wins: '+state.wins; }
 function flashStatus(msg,warn){ const el=document.getElementById('status'); el.textContent=msg; el.style.color=warn?'#e25d5d':'#e9f4ff'; if(warn) setTimeout(()=> el.style.color='',900); }
-function updateBattleBtn(){
-  document.getElementById('btnBattle').disabled = (state.gridHex.size === 0);
-}
+function updateBattleBtn(){ document.getElementById('btnBattle').disabled = (teamCount()===0); }
 
 /* Roll & Lock */
 function rollShop(){ if(state.gold<CONFIG.rollCost){ flashStatus('Not enough gold.',true); return; } spendGold(CONFIG.rollCost); state.shopLocked=false; generateShop(); flashStatus('Rolled new shop.'); }
 function toggleLock(){ state.shopLocked=!state.shopLocked; document.getElementById('btnLock').textContent= state.shopLocked?'Unlock':'Lock'; flashStatus(state.shopLocked?'Shop locked.':'Shop unlocked.'); }
 
 /* Battle Preparation */
-function startBattlePhase(){ if(state.gridHex.size === 0){ flashStatus('Need at least one ship.',true); return; } state.phase='battle'; document.getElementById('phaseIndicator').textContent='BATTLE'; document.querySelector('header h1').textContent='Fleet Battle – Battle'; document.getElementById('shopScreen').style.display='none'; document.getElementById('battleWrapper').style.display='block'; state.battleShips = [];
-state.gridHex.forEach(s=>{
-  s.side='player';
-  const p = axialToPixel(s.q,s.r);
-  s.origQ = s.q;          // remember original slot
-  s.origR = s.r;
-  s.x = s.targetX = p.x;
-  s.y = s.targetY = p.y;
-  s.alive = true;
-  s.hp = effectiveMaxHP(s);
-  state.battleShips.push(s);
-});
-// enemies
-
+function startBattlePhase(){ if(teamCount()===0){ flashStatus('Need at least one ship.',true); return; } state.phase='battle'; document.getElementById('phaseIndicator').textContent='BATTLE'; document.querySelector('header h1').textContent='Fleet Battle – Battle'; document.getElementById('shopScreen').style.display='none'; document.getElementById('battleWrapper').style.display='block'; state.battleShips=[]; for(let r=0;r<CONFIG.deployRows;r++){ for(let c=0;c<CONFIG.deployCols;c++){ const s=state.grid[r][c]; if(!s) continue; s.side='player'; s.q=c; s.r=[0,2,4][r]; const p=axialToPixel(s.q,s.r); s.x=s.targetX=p.x; s.y=s.targetY=p.y; s.alive=true; s.hp=effectiveMaxHP(s); }} state.battleShips.push(...state.grid.flat().filter(Boolean)); // enemies
   const enemyCount=state.battleShips.length; for(let i=0;i<enemyCount;i++){ const t=randChoice(SHIP_TYPES); const e=createShip(t); e.side='enemy'; e.q=CONFIG.enemyBaseQ - (i % (CONFIG.deployCols+2)); e.r=[0,2,4][i%3]; const p=axialToPixel(e.q,e.r); e.x=e.targetX=p.x; e.y=e.targetY=p.y; state.battleShips.push(e); }
   state.projectiles=[]; state.elapsed=0; state.startTime=performance.now(); state.lastTime=state.startTime; triggerStartBattle(); updateShipStatsPanel(); updateStatusBar('Battle running...'); requestAnimationFrame(loopBattle); }
 
@@ -538,22 +264,47 @@ function tryMoveToHex(ship, newQ, newR, occ){
   return true;
 }
 
+  // === Occupancy Helpers (prevent overlapping hex positions) ===
+function buildOccupancy() {
+  const occ = new Map();
+  state.battleShips.forEach(s=>{
+    if(!s.alive) return;
+    const key = s.q + ',' + s.r;
+    if(!occ.has(key)) occ.set(key, []);
+    occ.get(key).push(s);
+  });
+  return occ;
+}
+function isOccupied(occ, q, r, excludeUid){
+  const key = q + ',' + r;
+  if(!occ.has(key)) return false;
+  return occ.get(key).some(s => s.uid !== excludeUid && s.alive);
+}
+function tryMoveToHex(ship, newQ, newR, occ){
+  if(isOccupied(occ, newQ, newR, ship.uid)) return false;
+  ship.q = newQ;
+  ship.r = newR;
+  const p = axialToPixel(ship.q, ship.r);
+  ship.targetX = p.x;
+  ship.targetY = p.y;
+  const key = newQ + ',' + newR;
+  if(!occ.has(key)) occ.set(key, []);
+  occ.get(key).push(ship);
+  return true;
+}
 
   
   
 /* Combat Helpers */
 function nearestEnemy(ship){ let best=null, bestD=Infinity; state.battleShips.forEach(o=>{ if(!o.alive||o.side===ship.side) return; const d=hexDistanceQR(ship,o); if(d<bestD){bestD=d;best=o;} }); return best; }
 function inHexRange(s,t){ return t && hexDistanceQR(s,t)<=s.rangeHex; }
+// Advance one axial step toward target allowing diagonal movement
+function advanceToward(s, t, occ){
+  if(!t) return;
+  // Stop if close enough in straight-line hex distance
+  if(hexDistanceQR(s, t) <= CONFIG.advanceStopGap) return;
 
-// Move one step toward *entering* range of a specific target.
-// If already in range, no movement. Chooses adjacent hex that most reduces (distance - range).
-function stepTowardRange(s, target, occ){
-  if(!target) return;
-  const range = s.rangeHex;
-  const currentD = hexDistanceQR(s, target);
-  if(currentD <= range) return; // already in range
-
-  // Axial neighbors (pointy top)
+  // Axial neighbor directions (pointy-top): ( +1,0 ), ( -1,0 ), ( 0,+1 ), ( 0,-1 ), ( +1,-1 ), ( -1,+1 )
   const dirs = [
     {dq: 1, dr: 0},
     {dq:-1, dr: 0},
@@ -563,28 +314,26 @@ function stepTowardRange(s, target, occ){
     {dq:-1, dr: 1},
   ];
 
-  let best = null;
-  let bestMetric = Infinity; // (distance - range) after move; want this minimal & >= 0 ideally
-  let bestRawDist = Infinity;
-  let bestQDelta = Infinity;
-
+  // Prefer directions that reduce hex distance; score tie‑break by how much q closes to keep “forward” feel
+  let best = null, bestDist = Infinity, bestQDelta = Infinity;
   dirs.forEach(d=>{
     const nq = s.q + d.dq;
     const nr = s.r + d.dr;
-    if(nr < 0 || nr >= CONFIG.rows) return;
     if(isOccupied(occ, nq, nr, s.uid)) return;
-
+    // OPTIONAL: clamp r into board vertical range (your r values are 0..4).
+    if(nr < 0 || nr >= CONFIG.rows) return;
     const fake = {q:nq, r:nr};
-    const dist = hexDistanceQR(fake, target);
-    const metric = Math.max(0, dist - range);
-
-    if(metric < bestMetric ||
-       (metric === bestMetric && dist < bestRawDist) ||
-       (metric === bestMetric && dist === bestRawDist && Math.abs(target.q - nq) < bestQDelta)){
-      bestMetric = metric;
-      bestRawDist = dist;
-      bestQDelta = Math.abs(target.q - nq);
+    const dist = hexDistanceQR(fake, t);
+    if(dist < bestDist){
+      bestDist = dist;
+      bestQDelta = Math.abs(t.q - nq);
       best = d;
+    } else if(dist === bestDist){
+      const qDelta = Math.abs(t.q - nq);
+      if(qDelta < bestQDelta){
+        bestQDelta = qDelta;
+        best = d;
+      }
     }
   });
 
@@ -593,46 +342,13 @@ function stepTowardRange(s, target, occ){
   }
 }
 
-  
+
 /* Projectiles */
 function makeProjectile(from,to,override){ const ang=Math.atan2(to.y-from.y,to.x-from.x); return {x:from.x,y:from.y,vx:Math.cos(ang)*CONFIG.projectileSpeed,vy:Math.sin(ang)*CONFIG.projectileSpeed,r:5,from:from.uid,target:to.uid,color:from.side==='player'?'#a9f3ff':'#ff9f84',alive:true,dmg:override||effectiveDamage(from),meta:{chainLeft: from.ability && from.ability.id==='chain'? from.ability.jumps:0, hit:new Set()}}; }
 
 /* Battle Loop */
-
-function speedForElapsed(ms){
-  const step = Math.floor(ms / 5000);   // every 5 s
-  return Math.pow(1.5, step);           // 1 → 1.5 → 2.25 → 3.375 …
-}
-
 let battleRaf=null;
-function loopBattle(t){
-  if (state.phase !== 'battle') return;
-
-  /* ---------- time bookkeeping ---------- */
-  const rawDt = t - state.lastTime;       // real‑time milliseconds since last frame
-  state.lastTime = t;
-  state.elapsed  = t - state.startTime;   // total real‑time elapsed this battle
-
-  /* ---------- exponential speed ramp (1.0 → 1.5 → 2.25 … every 5 s) ---------- */
-  const speed   = speedForElapsed(state.elapsed);   // helper returns 1.5^step
-  const dt      = rawDt * speed;                    // scaled delta used by sim
-
-  /* ---------- update & render ---------- */
-  updateTimer();            // still shows real‑time on UI
-  processPeriodic(dt);      // abilities that tick over time
-  updateBattle(dt);         // movement, firing, projectiles, DOTs
-  drawBattle();
-
-  /* ---------- win / loss check ---------- */
-  const playerAlive = state.battleShips.some(s => s.alive && s.side === 'player');
-  const enemyAlive  = state.battleShips.some(s => s.alive && s.side === 'enemy');
-  if (!playerAlive || !enemyAlive){
-    finishBattle(playerAlive && !enemyAlive);
-    return;
-  }
-
-  battleRaf = requestAnimationFrame(loopBattle);
-}
+function loopBattle(t){ if(state.phase!=='battle') return; const dt=t-state.lastTime; state.lastTime=t; state.elapsed=t-state.startTime; updateTimer(); processPeriodic(dt); updateBattle(dt); drawBattle(); const playerAlive=state.battleShips.some(s=>s.alive&&s.side==='player'); const enemyAlive=state.battleShips.some(s=>s.alive&&s.side==='enemy'); if(!playerAlive || !enemyAlive){ finishBattle(playerAlive && !enemyAlive); return; } battleRaf=requestAnimationFrame(loopBattle); }
 function updateBattle(dt){
   // (A) Pixel easing
   state.battleShips.forEach(s=>{
@@ -644,38 +360,27 @@ function updateBattle(dt){
   // (B) Occupancy BEFORE moves
   const occ = buildOccupancy();
 
-    // (C) Movement + firing (range-first logic)
+  // (C) Movement + firing
   state.battleShips.forEach(s=>{
     if(!s.alive) return;
     s.fireTimer += dt;
     s.flashT = Math.max(0, s.flashT - dt);
 
-    const target = nearestEnemy(s); // single nearest enemy
-    if(!target) return;
+    const target = nearestEnemy(s);
+    const hasRange = inHexRange(s, target);
 
-    const dist = hexDistanceQR(s, target);
-    const inRange = dist <= s.rangeHex;
-
-    if(!inRange){
-      // Move one step toward the closest hex that will eventually bring target into range.
-      stepTowardRange(s, target, occ);
+    if(!hasRange){
+      advanceToward(s, target, occ);
     }
-
-    // Re-check distance after potential move (do not allow attack pre-maturely)
-    const postDist = hexDistanceQR(s, target);
-    const nowInRange = postDist <= s.rangeHex;
-
-    // Compute cooldown (optionally incorporate slow here if desired, e.g., * s.slowMult)
-    const cd = fireCooldown(s); // if slow should affect, use: fireCooldown(s) / s.slowMult or * s.slowMult depending on design
-
-    if(nowInRange && s.fireTimer >= cd){
+    if(hasRange && s.fireTimer >= fireCooldown(s)){
       s.fireTimer = 0;
-      const p = makeProjectile(s, target);
-      state.projectiles.push(p);
-      onAttack(s, target, p); // ability hook
+      if(target){
+        const p = makeProjectile(s, target);
+        state.projectiles.push(p);
+        onAttack(s, target, p);
+      }
     }
   });
-
 
   // (D) Projectiles
   state.projectiles.forEach(p=>{
@@ -703,12 +408,7 @@ function updateBattle(dt){
     if(s.hp <= 0) killShip(s);
   });
 }
-
-  function fireCooldown(s){
-  // If slow should lengthen cooldown: return s.baseFireRate * s.fireRateMod * Math.pow(CONFIG.fireRateTierMult, s.tier-1) / s.slowMult;
-  return s.baseFireRate * s.fireRateMod * Math.pow(CONFIG.fireRateTierMult, s.tier-1);
-}
-
+  
 function onAttack(shooter,target,proj){ const a=shooter.ability; if(!a) return; }
 function onHit(projectile,target){ const shooter=state.battleShips.find(s=>s.uid===projectile.from); if(!shooter) return; applyAbilityOnHit(shooter,target,projectile); applyDamage(target,projectile.dmg,shooter); if(shooter.ability && shooter.ability.id==='pierceShot'){ const behind=findBehind(target,shooter,1.5); if(behind) applyDamage(behind,Math.round(projectile.dmg*shooter.ability.value),shooter); } if(shooter.ability && shooter.ability.id==='chain' && projectile.meta.chainLeft>0){ const next=findChainTarget(target,shooter,projectile.meta.hit); if(next){ projectile.meta.hit.add(target.uid); projectile.meta.chainLeft--; const cp=makeProjectile(target,next,Math.round(projectile.dmg*shooter.ability.value)); cp.meta.chainLeft=projectile.meta.chainLeft; cp.meta.hit=projectile.meta.hit; state.projectiles.push(cp); } } }
 function applyAbilityOnHit(shooter, target, proj){
@@ -745,6 +445,37 @@ function applyAbilityOnHit(shooter, target, proj){
       );
       break;
 
+   function applyAbilityOnHit(shooter,target,proj){
+  const a = shooter.ability;
+  if(!a) return;
+
+  switch(a.id){
+    case 'burn':
+      target.burns.push({ t:a.duration, dps: a.value / (a.duration/1000) });
+      break;
+    case 'execute':
+      if(target.hp / effectiveMaxHP(target) < a.threshold) target.hp -= a.value;
+      break;
+    case 'slowBeam':
+      target.slowMult = Math.min(target.slowMult, 1 - a.value);
+      setTimeout(()=>{ if(target.alive) target.slowMult = 1; }, a.duration);
+      break;
+    case 'armorShred':
+      target.armorShred = clamp((target.armorShred||0) + a.value, 0, a.value * (a.stacks||5));
+      break;
+    case 'pull':
+      if(!a._used){
+        const dir = shooter.side === 'player' ? -1 : 1; // toward shooter
+        const occ = buildOccupancy();
+        let steps = a.value;
+        while(steps > 0){
+          const nextQ = target.q + dir;
+          if(!tryMoveToHex(target, nextQ, target.r, occ)) break;
+          steps--;
+        }
+        a._used = true;
+      }
+      break;
     case 'shieldPulse':
       // no on-hit effect (applied at start)
       break;
@@ -754,6 +485,15 @@ function applyAbilityOnHit(shooter, target, proj){
 }
 
 
+    case 'shieldPulse':
+      // No on-hit effect for shieldPulse (startBattle trigger already applied)
+      break;
+
+    default:
+      // other abilities (pierceShot, chain, etc.) handled elsewhere
+      break;
+  }
+}
 
 function findBehind(target,shooter,maxD){ const dir=shooter.side==='player'?1:-1; return state.battleShips.find(o=> o.alive && o.side!==shooter.side && o!==target && o.r===target.r && ((o.q-target.q)*dir>0) && Math.abs(o.q-target.q)<=maxD); }
 function findChainTarget(prev,shooter,set){ let best=null,d=Infinity; state.battleShips.forEach(e=>{ if(!e.alive||e.side===shooter.side||e.uid===prev.uid||set.has(e.uid)) return; const dist=hexDistanceQR(prev,e); if(dist<d && dist<=3){ d=dist; best=e; } }); return best; }
@@ -766,225 +506,37 @@ function killShip(s){ s.hp=0; s.alive=false; }
 function finishBattle(victory){ state.phase='result'; cancelAnimationFrame(battleRaf); if(victory){ state.wins++; } else { state.lives--; } updateLivesWins(); let endType=''; if(state.wins>=CONFIG.winGoal){ endType='gamewin'; state.gameOver=true; } else if(state.lives<=0){ endType='gamelose'; state.gameOver=true; } updateStatusBar(victory? 'Victory!':'Defeat'); showOverlay(endType|| (victory?'win':'loss')); }
 
 /* Overlay / Rounds */
-function showOverlay(resultCode){ const ov=document.getElementById('overlay'); ov.style.display='flex'; const title=document.getElementById('resultTitle'); const stats=document.getElementById('resultStats'); if(resultCode==='gamewin'){ title.textContent='YOU WIN!'; stats.textContent=`Final Time ${(state.elapsed/1000).toFixed(1)}s • Wins ${state.wins}`; } else if(resultCode==='gamelose'){ title.textContent='Game Over'; stats.textContent=`Wins ${state.wins} • Reached Round ${state.round}`; } else { title.textContent=(resultCode==='win'?'Victory':'Defeat'); stats.textContent='Duration: '+(state.elapsed/1000).toFixed(1)+'s'; } document.getElementById('btnCloseOverlay').textContent = state.gameOver? 'Restart':'Continue'; }
+function showOverlay(resultCode){ const ov=document.getElementById('overlay'); ov.style.display='flex'; const title=document.getElementById('resultTitle'); const stats=document.getElementById('resultStats'); if(resultCode==='gamewin'){ title.textContent='YOU WIN!'; stats.textContent=Final Time ${(state.elapsed/1000).toFixed(1)}s • Wins ${state.wins}; } else if(resultCode==='gamelose'){ title.textContent='Game Over'; stats.textContent=Wins ${state.wins} • Reached Round ${state.round}; } else { title.textContent=(resultCode==='win'?'Victory':'Defeat'); stats.textContent='Duration: '+(state.elapsed/1000).toFixed(1)+'s'; } document.getElementById('btnCloseOverlay').textContent = state.gameOver? 'Restart':'Continue'; }
 function closeOverlay(){ document.getElementById('overlay').style.display='none'; }
-function nextRound () {
-
-  /* -------- game over? then start a brand‑new run -------- */
-  if (state.gameOver) { resetGame(); return; }
-
-  /* ===== 1. advance round & basic UI labels  ===== */
-  state.round++;
-  generateEnemyPreview(); 
-  state.phase = 'shop';
-
-  document.getElementById('phaseIndicator').textContent = 'SHOP';
-  document.querySelector('header h1').textContent       = 'Fleet Battle – Shop Phase';
-
-  document.getElementById('battleWrapper').style.display = 'block';
-  document.getElementById('shopScreen').style.display    = 'block';
-
-  /* ===== 2. economy & team‑limit scaling ===== */
-  state.gold     += CONFIG.incomePerRound;
-  state.teamLimit = CONFIG.roundTeamLimits[
-                     Math.min(state.round - 1, CONFIG.roundTeamLimits.length - 1)];
-
-  document.getElementById('teamLimit').textContent = state.teamLimit;
-  document.getElementById('roundNum').textContent  = state.round;
-  updateGold();
-/* ===== 3.  RESTORE FLEET TO PRE‑BATTLE LAYOUT ===== */
-{
-  const rebuilt = new Map();                    // new hex‑map for shop phase
-
-  state.gridHex.forEach(ship => {
-    /* snap back to the cell the player put it in pre‑battle */
-    ship.q = ship.origQ;
-    ship.r = ship.origR;
-    const p = axialToPixel(ship.q, ship.r);
-    ship.x = ship.targetX = p.x;
-    ship.y = ship.targetY = p.y;
-
-    /* full revive & cleanse (works for wins *and* losses) */
-    ship.alive     = true;
-    ship.hp        = effectiveMaxHP(ship);
-    ship.shield    = 0;
-    ship.burns     = [];
-    ship.slowMult  = 1;
-    ship.fireTimer = 0;
-
-    rebuilt.set(slotKey(ship.q, ship.r), ship);
-  });
-
-  state.gridHex = rebuilt;                      // swap in rebuilt board
-}
-
-
-/* ===== 4. shop refresh & UI ===== */
-flashStatus('Round ' + state.round + ' – New shop.');
-state.shopLocked = false;
-document.getElementById('btnLock').textContent = 'Lock';
-generateShop();
-updateBattleBtn();
-syncTokenLayer();        // keep overlay fresh
-}   //  <‑‑‑‑ CLOSES nextRound()
-
-
-
-function resetGame(){ state.round=1; state.gold=CONFIG.baseGold; state.lives=CONFIG.lifePool; state.wins=0; state.gameOver=false; state.grid=createGrid(); state.gridHex.clear(); document.getElementById('teamLimit').textContent=CONFIG.roundTeamLimits[0]; document.getElementById('roundNum').textContent=1; updateLivesWins(); updateGold(); generateShop(); generateEnemyPreview(); renderShop();  updateBattleBtn(); flashStatus('New game started.',false); document.getElementById('phaseIndicator').textContent='SHOP'; document.querySelector('header h1').textContent='Fleet Battle – Shop Phase'; document.getElementById('battleWrapper').style.display='block'; document.getElementById('shopScreen').style.display='block'; }
+function nextRound(){ if(state.gameOver){ resetGame(); return; } state.round++; state.phase='shop'; document.getElementById('phaseIndicator').textContent='SHOP'; document.querySelector('header h1').textContent='Fleet Battle – Shop Phase'; document.getElementById('battleWrapper').style.display='none'; document.getElementById('shopScreen').style.display='block'; state.gold += CONFIG.incomePerRound; state.teamLimit=CONFIG.roundTeamLimits[Math.min(state.round-1, CONFIG.roundTeamLimits.length-1)]; document.getElementById('teamLimit').textContent=state.teamLimit; document.getElementById('roundNum').textContent=state.round; updateGold(); flashStatus('Round '+state.round+' – New shop.'); state.shopLocked=false; document.getElementById('btnLock').textContent='Lock'; generateShop(); renderGrid(); updateBattleBtn(); }
+function resetGame(){ state.round=1; state.gold=CONFIG.baseGold; state.lives=CONFIG.lifePool; state.wins=0; state.gameOver=false; state.grid=createGrid(); document.getElementById('teamLimit').textContent=CONFIG.roundTeamLimits[0]; document.getElementById('roundNum').textContent=1; updateLivesWins(); updateGold(); generateShop(); renderShop(); renderGrid(); updateBattleBtn(); flashStatus('New game started.',false); document.getElementById('phaseIndicator').textContent='SHOP'; document.querySelector('header h1').textContent='Fleet Battle – Shop Phase'; document.getElementById('battleWrapper').style.display='none'; document.getElementById('shopScreen').style.display='block'; }
 
 /* Panels */
-function updateShipStatsPanel(){ const panel=document.getElementById('shipStatsPanel'); panel.innerHTML=''; if(state.phase!=='battle' && state.phase!=='result') return; state.battleShips.filter(s=>s.side==='player').forEach(s=>{ const max=effectiveMaxHP(s); const div=document.createElement('div'); div.className='shipStatsCard'; div.innerHTML=`<div class='title'>${s.name}</div><div class='tier'>Tier ${s.tier} (${s.copies}/${CONFIG.fusionCopies})</div>HP: ${Math.max(0,Math.round(s.hp))}/${max} ${s.shield? ' (+'+Math.round(s.shield)+' sh)': ''}<br>Dmg: ${effectiveDamage(s)}<br>CD: ${Math.round(fireCooldown(s))}ms<br>Range: ${s.rangeHex}<br>Ability: ${s.ability? s.ability.id:''}`; panel.appendChild(div); }); }
+function updateShipStatsPanel(){ const panel=document.getElementById('shipStatsPanel'); panel.innerHTML=''; if(state.phase!=='battle' && state.phase!=='result') return; state.battleShips.filter(s=>s.side==='player').forEach(s=>{ const max=effectiveMaxHP(s); const div=document.createElement('div'); div.className='shipStatsCard'; div.innerHTML=<div class='title'>${s.name}</div><div class='tier'>Tier ${s.tier} (${s.copies}/${CONFIG.fusionCopies})</div>HP: ${Math.max(0,Math.round(s.hp))}/${max} ${s.shield? ' (+'+Math.round(s.shield)+' sh)': ''}<br>Dmg: ${effectiveDamage(s)}<br>CD: ${Math.round(fireCooldown(s))}ms<br>Range: ${s.rangeHex}<br>Ability: ${s.ability? s.ability.id:''}; panel.appendChild(div); }); }
 function pulseShipCard(uid){ /* optional animation */ }
 
 /* Tooltip */
 const tooltipEl=document.getElementById('tooltip');
-function showShipTooltip(e,ship){ const max=effectiveMaxHP(ship); tooltipEl.style.display='block'; tooltipEl.innerHTML=`<strong>${ship.name}</strong> (T${ship.tier})<br>HP ${Math.round(ship.hp)}/${max}${ship.shield? ' +'+Math.round(ship.shield)+'sh':''}<br>Dmg ${effectiveDamage(ship)} • CD ${Math.round(fireCooldown(ship))}ms<br>Range ${ship.rangeHex} • Copies ${ship.copies}/${CONFIG.fusionCopies}<br><em>${ship.ability? ship.ability.desc:''}</em>`; const rect=document.body.getBoundingClientRect(); const x=e.pageX+14; const y=e.pageY+14; tooltipEl.style.left=(x)+'px'; tooltipEl.style.top=(y)+'px'; }
+function showShipTooltip(e,ship){ const max=effectiveMaxHP(ship); tooltipEl.style.display='block'; tooltipEl.innerHTML=<strong>${ship.name}</strong> (T${ship.tier})<br>HP ${Math.round(ship.hp)}/${max}${ship.shield? ' +'+Math.round(ship.shield)+'sh':''}<br>Dmg ${effectiveDamage(ship)} • CD ${Math.round(fireCooldown(ship))}ms<br>Range ${ship.rangeHex} • Copies ${ship.copies}/${CONFIG.fusionCopies}<br><em>${ship.ability? ship.ability.desc:''}</em>; const rect=document.body.getBoundingClientRect(); const x=e.pageX+14; const y=e.pageY+14; tooltipEl.style.left=(x)+'px'; tooltipEl.style.top=(y)+'px'; }
 function hideTooltip(){ tooltipEl.style.display='none'; }
 
 /* Timer */
 function updateTimer(){ document.getElementById('timer').textContent=(state.elapsed/1000).toFixed(1)+'s'; }
-  
-function syncTokenLayer(){
-  if (state.phase !== 'shop') {        // hide during battle
-    document.getElementById('tokenLayer').innerHTML = ''; return;
-  }
-  const layer = document.getElementById('tokenLayer');
-  layer.innerHTML = '';
-  state.gridHex.forEach(ship => {
-    const tok = makeToken(ship);               // re‑uses existing DOM maker
-    const pos = axialToPixel(ship.q, ship.r);
-    tok.style.position = 'absolute';
-    tok.style.left  = (pos.x - 75) + 'px';     // 75 = token half‑width
-    tok.style.top   = (pos.y - 20) + 'px';     // vertical tweak
-    layer.appendChild(tok);
-  });
-}
 
-  
 /* Rendering Battle */
-const canvas=document.getElementById('battleCanvas'); const ctx=canvas.getContext('2d');function drawBattle(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawHexBG();
-  if (state.phase === 'shop'){
-      drawShopPlacementLayer();
-      syncTokenLayer();                // <‑‑ keep overlay in‑sync
-  } else {
-
-    if(document.getElementById('rangeToggle').checked) drawRanges();
-    drawProjectiles();
-  }
-  drawShips();
-    /* ---- enemy silhouettes during SHOP ---- */
-  if (state.phase === 'shop') {
-    ctx.save();
-    ctx.globalAlpha = 0.25;
-    previewEnemies.forEach(drawShip);   // re‑use existing ship renderer
-    ctx.restore();
-  }
-
-}
-
+const canvas=document.getElementById('battleCanvas'); const ctx=canvas.getContext('2d');
+function drawBattle(){ ctx.clearRect(0,0,canvas.width,canvas.height); drawHexBG(); if(document.getElementById('rangeToggle').checked) drawRanges(); drawProjectiles(); drawShips(); }
 function drawHexBG(){ ctx.save(); ctx.strokeStyle='#143047'; ctx.lineWidth=1; const maxQ=CONFIG.enemyBaseQ+2; for(let q=-1;q<=maxQ;q++){ for(let r=0;r<CONFIG.rows;r++){ const p=axialToPixel(q,r); if(p.x<40||p.x>canvas.width-40) continue; drawHex(p.x,p.y,CONFIG.hexRadius); } } ctx.restore(); }
 function drawHex(cx,cy,r){ ctx.beginPath(); for(let i=0;i<6;i++){ const a=(Math.PI/180)*(60*i -30); const x=cx+r*Math.cos(a), y=cy+r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); ctx.stroke(); }
-function drawShopPlacementLayer(){
-  ctx.save();
-  SHOP_HEX_SLOTS.forEach(slot=>{
-    const p = axialToPixel(slot.q, slot.r);
-    const occupied = getShipAtHex(slot.q, slot.r);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = occupied ? '#2b6f3f' : '#255a7c';
-    ctx.globalAlpha = 0.55;
-    drawHex(p.x, p.y, CONFIG.hexRadius);
-    if(hoverHex && hoverHex.q === slot.q && hoverHex.r === slot.r){
-      ctx.fillStyle = occupied ? 'rgba(255,140,120,0.28)' : 'rgba(120,200,255,0.28)';
-      ctx.fill();
-    }
-  });
-  ctx.restore();
-}
-
 function drawRanges(){ ctx.save(); ctx.lineWidth=1; state.battleShips.forEach(s=>{ if(!s.alive) return; const px=axialToPixel(s.q,s.r); const rp = s.rangeHex*CONFIG.hexRadius*CONFIG.RANGE_PIXEL_SCALE; ctx.strokeStyle=s.side==='player'? 'rgba(63,169,245,0.18)':'rgba(255,136,102,0.14)'; ctx.beginPath(); ctx.arc(px.x,px.y,rp,0,Math.PI*2); ctx.stroke(); }); ctx.restore(); }
-function drawShips(){
-  if(state.phase === 'shop'){
-    state.gridHex.forEach(s=> drawShip(s));
-  } else {
-    state.battleShips.forEach(s=> drawShip(s));
-  }
-}
-
+function drawShips(){ state.battleShips.forEach(s=> drawShip(s)); }
 function drawShip(s){ const r=CONFIG.hexRadius*0.65; ctx.save(); ctx.translate(s.x,s.y); ctx.globalAlpha=s.alive?1:0.25; const flashA=s.flashT>0? s.flashT/CONFIG.damageFlash:0; ctx.fillStyle=blend(s.color,'#ffffff',flashA*0.85); ctx.strokeStyle='#0d2536'; ctx.lineWidth=2; drawShape(s.shape,r); ctx.fill(); ctx.stroke(); const max=effectiveMaxHP(s); const pct=s.hp/max; const bw=r*1.5, bh=6; ctx.fillStyle='#1d3544'; ctx.fillRect(-bw/2,r+4,bw,bh); ctx.fillStyle=pct>0.6?'#53c97d':pct>0.3?'#f0c05a':'#e25d5d'; ctx.fillRect(-bw/2,r+4,bw*pct,bh); ctx.strokeStyle='#0a1b27'; ctx.strokeRect(-bw/2,r+4,bw,bh); if(s.shield>0){ ctx.fillStyle='#66c6ff'; ctx.fillRect(-bw/2,r+4+bh,bw*(s.shield/(max*1.2)),3); } ctx.fillStyle='#fff'; ctx.font='11px sans-serif'; ctx.textAlign='center'; ctx.fillText('T'+s.tier,0,-r-6); ctx.restore(); }
 function drawShape(shape,r){ ctx.beginPath(); switch(shape){ case 'hex': for(let i=0;i<6;i++){ const a=(Math.PI/180)*(60*i-30); const x=r*Math.cos(a),y=r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); break; case 'triangle': for(let i=0;i<3;i++){ const a=(Math.PI/180)*(120*i-90); const x=r*Math.cos(a),y=r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); break; case 'gear': for(let i=0;i<12;i++){ const a=i*Math.PI/6; const rr=i%2?r*0.55:r; ctx.lineTo(rr*Math.cos(a), rr*Math.sin(a)); } ctx.closePath(); break; case 'diamond': ctx.moveTo(0,-r); ctx.lineTo(r*0.8,0); ctx.lineTo(0,r); ctx.lineTo(-r*0.8,0); ctx.closePath(); break; case 'shuriken': for(let i=0;i<8;i++){ const a=i*Math.PI/4; const rr=i%2?r*0.4:r; ctx.lineTo(rr*Math.cos(a), rr*Math.sin(a)); } ctx.closePath(); break; case 'octagon': for(let i=0;i<8;i++){ const a=(Math.PI/4)*i; const x=r*Math.cos(a),y=r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); break; case 'lightning': ctx.moveTo(-r*0.3,-r); ctx.lineTo(r*0.15,-r*0.1); ctx.lineTo(-r*0.05,-r*0.05); ctx.lineTo(r*0.3,r); ctx.lineTo(-r*0.15,r*0.05); ctx.lineTo(r*0.05,r*0.1); ctx.closePath(); break; case 'pentagon': for(let i=0;i<5;i++){ const a=(Math.PI*2/5)*i - Math.PI/2; const x=r*Math.cos(a),y=r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); break; case 'eye': ctx.ellipse(0,0,r,r*0.55,0,0,Math.PI*2); break; case 'harpoon': ctx.moveTo(-r*0.6,-r*0.2); ctx.lineTo(r*0.2,-r*0.2); ctx.lineTo(r*0.6,-r); ctx.lineTo(r*0.6,r); ctx.lineTo(r*0.2,0.2*r); ctx.lineTo(-r*0.6,0.2*r); ctx.closePath(); break; default: ctx.arc(0,0,r,0,Math.PI*2); }
 }
-function drawProjectiles() {
-  ctx.save();
-  state.projectiles.forEach(p => {
-    ctx.beginPath();
-    ctx.fillStyle = p.color;
-    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-    ctx.fill();
-  });
-  ctx.restore();
-}
+function drawProjectiles(){ ctx.save(); state.projectiles.forEach(p=>{ ctx.beginPath(); ctx.fillStyle=p.color; ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); }); ctx.restore(); }
 
 /* Events */
-
-window.addEventListener('DOMContentLoaded', () => {
-  /* ---------- buttons ---------- */
-  document.getElementById('btnRoll').addEventListener('click', rollShop);
-  document.getElementById('btnLock').addEventListener('click', toggleLock);
-  document.getElementById('btnBattle').addEventListener('click', startBattlePhase);
-  document.getElementById('btnCloseOverlay').addEventListener('click', () => {
-    closeOverlay();
-    nextRound();
-  });
-
-  /* ---------- range‑toggle checkbox ---------- */
-  document.getElementById('rangeToggle').addEventListener('change', () => {
-    if (state.phase === 'battle') drawBattle();
-  });
-
-  /* ---------- initial shop / UI ---------- */
-  generateShop();
-  renderShop();
-  updateGold();
-  updateLivesWins();
-  updateBattleBtn();
-  syncTokenLayer();
-
-
-  /* ---------- canvas drag‑and‑drop for hex placement ---------- */
-  const canvasEl = document.getElementById('battleCanvas');
-
-  canvasEl.addEventListener('dragover', e => {
-    if (!dragType) return;
-    const hex = screenToHex(e.offsetX, e.offsetY);
-    if (!hex || !isLegalShopHex(hex.q, hex.r)) return;
-    e.preventDefault();
-    hoverHex = hex;
-    if (state.phase === 'shop') drawBattle();
-  });
-
-  canvasEl.addEventListener('dragleave', () => {
-    if (hoverHex) {
-      hoverHex = null;
-      if (state.phase === 'shop') drawBattle();
-    }
-  });
-
-  canvasEl.addEventListener('drop', e => {
-    if (!dragType) return;
-    e.preventDefault();
-    const hex = screenToHex(e.offsetX, e.offsetY);
-    if (!hex || !isLegalShopHex(hex.q, hex.r)) {
-      hoverHex = null;
-      if (state.phase === 'shop') drawBattle();
-      return;
-    }
-    handleHexDrop(hex.q, hex.r);
-    hoverHex = null;
-    if (state.phase === 'shop') drawBattle();
-  });
-});
+window.addEventListener('DOMContentLoaded',()=>{ document.getElementById('btnRoll').addEventListener('click',rollShop); document.getElementById('btnLock').addEventListener('click',toggleLock); document.getElementById('btnBattle').addEventListener('click',startBattlePhase); document.getElementById('btnCloseOverlay').addEventListener('click',()=>{ closeOverlay(); nextRound(); }); document.getElementById('rangeToggle').addEventListener('change',()=>{ if(state.phase==='battle') drawBattle(); }); generateShop(); renderShop(); renderGrid(); updateGold(); updateLivesWins(); updateBattleBtn(); });
 </script>
 </body>
 </html>
