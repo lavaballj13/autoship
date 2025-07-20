@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Fleetbound Prototype (MVP)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --lane-count: 5;
+    --cols: 9;
+    --tile-size: 64px; /* adjust for scale */
+    --gap: 4px;
+    --bg: #0b1f33;
+    --accent: #3fa9f5;
+    --danger: #d9534f;
+    --ok: #5cb85c;
+    --warn: #f0ad4e;
+    --panel: #142b44;
+    --panel-border: #1f3d5c;
+    --text: #eef8ff;
+    font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  body { margin:0; background:var(--bg); color:var(--text); display:flex; flex-direction:column; height:100vh; }
+  header { padding:8px 16px; background:#071424; display:flex; gap:12px; align-items:center; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  #root { flex:1; display:grid; grid-template-columns: 1fr 320px; gap:8px; padding:8px; overflow:hidden; }
+  #boardWrapper { background:#06111d; border:1px solid var(--panel-border); border-radius:6px; padding:8px; display:flex; flex-direction:column; }
+  #board { position:relative; width:calc(var(--cols) * (var(--tile-size) + var(--gap)) + var(--gap)); height:calc(var(--lane-count) * (var(--tile-size) + var(--gap)) + var(--gap)); }
+  .laneGrid { position:absolute; top:0; left:0; display:grid; grid-template-columns:repeat(var(--cols), var(--tile-size)); grid-template-rows:repeat(var(--lane-count), var(--tile-size)); gap:var(--gap); }
+  .tile { width:var(--tile-size); height:var(--tile-size); background:#0f2336; border:1px solid #152f48; box-sizing:border-box; border-radius:4px; position:relative; }
+  .tile.hover-valid { outline:2px solid var(--accent); outline-offset:-2px; }
+  .ship { position:absolute; top:0; left:0; height:var(--tile-size); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; cursor:pointer; user-select:none; border-radius:6px; box-sizing:border-box; transition:filter 0.25s; }
+  .ship.player { background:linear-gradient(90deg,#2d6fb0,#274d74); border:2px solid #3fa9f5; }
+  .ship.enemy { background:linear-gradient(90deg,#742e2e,#3d1313); border:2px solid #c94d4d; }
+  .ship.selected { filter:brightness(1.3); }
+  .integrity { position:absolute; left:4px; bottom:2px; display:flex; gap:2px; }
+  .integrity span { width:10px; height:6px; background:#2d4258; border:1px solid #162532; box-sizing:border-box; }
+  .integrity span.on { background:var(--ok); }
+  .integrity span.mid { background:var(--warn); }
+  .integrity span.low { background:var(--danger); }
+  #sidePanel { background:var(--panel); border:1px solid var(--panel-border); border-radius:6px; display:flex; flex-direction:column; overflow:hidden; }
+  #tabs { display:flex; }
+  #tabs button { flex:1; background:#0e2337; border:none; color:var(--text); padding:6px 4px; font-weight:500; cursor:pointer; }
+  #tabs button.active { background:var(--accent); color:#031420; }
+  .panelView { flex:1; overflow:auto; display:none; padding:8px; }
+  .panelView.active { display:block; }
+  h2 { margin:8px 0 4px; font-size:14px; letter-spacing:.5px; }
+  .list { display:flex; flex-direction:column; gap:6px; }
+  .card { background:#0e2235; border:1px solid #173149; padding:6px; border-radius:6px; font-size:12px; position:relative; }
+  .card button { margin-top:4px; width:100%; }
+  button { background:var(--accent); color:#04121f; border:none; border-radius:4px; padding:6px 8px; font-weight:600; cursor:pointer; font-size:12px; }
+  button.small { padding:3px 6px; font-size:11px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .flex { display:flex; }
+  .gap8 { gap:8px; }
+  .space-between { justify-content:space-between; }
+  .resourceBar { display:flex; gap:12px; font-size:12px; }
+  .tag { display:inline-block; padding:2px 4px; background:#193750; border-radius:3px; font-size:10px; margin-right:4px; }
+  #log { height:120px; overflow:auto; background:#081724; border:1px solid #143049; padding:4px; font-size:11px; border-radius:4px; }
+  #phaseBar { margin:4px 0 8px; height:6px; background:#132b44; border-radius:4px; position:relative; }
+  #phaseProg { position:absolute; top:0; left:0; height:100%; background:var(--accent); width:0%; transition:width .2s linear; }
+  #topControls { display:flex; gap:8px; align-items:center; margin-bottom:4px; flex-wrap:wrap; }
+  .lootOption { border:1px solid #284663; padding:8px; border-radius:6px; background:#0c1f30; cursor:pointer; position:relative; }
+  .lootOption:hover { outline:2px solid var(--accent); }
+  #lootModal { position:fixed; inset:0; backdrop-filter:blur(4px); background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; }
+  #lootModal .inner { width:560px; max-width:90%; background:#0d2234; border:1px solid #295173; border-radius:10px; padding:16px; }
+  #mapModal { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; }
+  #mapModal .inner { background:#0d2234; border:1px solid #295173; padding:16px; border-radius:10px; width:640px; max-width:95%; }
+  .nodeRow { display:flex; gap:6px; margin-bottom:8px; justify-content:center; }
+  .mapNode { background:#133149; border:2px solid #1f4a6b; color:#fff; padding:6px 10px; font-size:11px; border-radius:14px; cursor:pointer; position:relative; }
+  .mapNode.current { border-color:var(--accent); box-shadow:0 0 0 2px rgba(63,169,245,.35); }
+  .mapNode.done { opacity:.5; }
+  .pulse { animation:pulse 1.25s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(63,169,245,.6);} 70%{box-shadow:0 0 0 8px rgba(63,169,245,0);} 100%{box-shadow:0 0 0 0 rgba(63,169,245,0);} }
+  /* Scrollbar minimal */
+  ::-webkit-scrollbar { width:8px; }
+  ::-webkit-scrollbar-track { background:#0a1b2a; }
+  ::-webkit-scrollbar-thumb { background:#1d3952; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fleetbound Prototype</h1>
+  <div class="resourceBar" id="resourceBar"></div>
+  <div id="statusMsg"></div>
+</header>
+<div id="root">
+  <div id="boardWrapper">
+    <div id="topControls">
+      <button id="btnStartBattle">Start Battle</button>
+      <button id="btnTogglePlacement" disabled>Placement Mode</button>
+      <button id="btnOpenMap">Map</button>
+      <button id="btnRepair" disabled>Repair (10g)</button>
+      <button id="btnEndRun" style="margin-left:auto;" disabled>End Run</button>
+    </div>
+    <div id="phaseBar"><div id="phaseProg"></div></div>
+    <div id="board">
+      <div class="laneGrid" id="laneGrid"></div>
+    </div>
+    <h2>Log</h2>
+    <div id="log"></div>
+  </div>
+  <div id="sidePanel">
+    <div id="tabs">
+      <button data-tab="ships" class="active">Ships</button>
+      <button data-tab="crew">Crew</button>
+      <button data-tab="systems">Systems</button>
+      <button data-tab="loot">Inventory</button>
+    </div>
+    <div id="panel_ships" class="panelView active">
+      <h2>Your Fleet</h2>
+      <div id="shipList" class="list"></div>
+    </div>
+    <div id="panel_crew" class="panelView">
+      <h2>Crew Pool</h2>
+      <div id="crewList" class="list"></div>
+    </div>
+    <div id="panel_systems" class="panelView">
+      <h2>Systems Pool</h2>
+      <div id="systemList" class="list"></div>
+    </div>
+    <div id="panel_loot" class="panelView">
+      <h2>Inventory</h2>
+      <div id="inventoryList" class="list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Loot Modal -->
+<div id="lootModal">
+  <div class="inner">
+    <h2>Choose Your Reward</h2>
+    <p id="lootDesc">Pick one reward.</p>
+    <div id="lootOptions" style="display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));"></div>
+    <div style="text-align:right;margin-top:12px;">
+      <button id="btnSkipLoot" class="small">Skip</button>
+    </div>
+  </div>
+</div>
+
+<!-- Map Modal -->
+<div id="mapModal">
+  <div class="inner">
+    <h2>Sea Chart</h2>
+    <div id="mapContainer"></div>
+    <div style="text-align:right;margin-top:12px;">
+      <button id="btnCloseMap">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/**
+ * FLEETBOUND PROTOTYPE
+ * -------------------------------------------
+ * Scope: Single-player lane auto-battler with:
+ *  - 5 lanes × 9 columns grid (player left -> enemy right)
+ *  - Ship length (2 or 3 tiles) for footprint
+ *  - Integrity breakpoints (3 segments) applying fire rate penalties
+ *  - Basic battle loop: spawn fleets, auto-advance, auto-attack
+ *  - Post-battle loot draft
+ *  - Simple map with battles only (extend later)
+ *  - Systems & Crew as attachable modifiers (inventory -> equip during placement phase)
+ *  - Reposition mode outside battle
+ *  - Damage persistence & repairs
+ *
+ * This is intentionally verbose & commented for clarity.
+ */
+
+/****************************** Data Definitions ******************************/
+const CONFIG = {
+  lanes: 5,
+  cols: 9,
+  tileSize: 64,
+  baseGold: 20,
+  integritySegments: 3,
+  repairCost: 10,
+  repairAmountPercent: 40, // percent of missing hp restored
+  systemMoveEnergy: 1,
+  crewMoveEnergy: 1,
+  baseEnergyPerNode: 3,
+  fireRatePenaltyPerLostSegment: 0.15, // each lost integrity segment increases cooldown 15%
+  shipAdvanceSpeed: 14, // px per second (converted to tile moves indirectly)
+  tickRate: 1000/30,
+  battleDurationLimit: 120000, // ms safeguard
+};
+
+// Simple RNG helper with seed for deterministic replays if needed.
+class RNG {
+  constructor(seed = Date.now() % 2147483647) { this.seed = seed; }
+  next() { return this.seed = this.seed * 16807 % 2147483647; }
+  float() { return (this.next() - 1) / 2147483646; }
+  pick(arr) { return arr[Math.floor(this.float() * arr.length)]; }
+}
+const rng = new RNG();
+
+// Base ship templates
+const SHIP_LIBRARY = {
+  viking_rammer: {
+    id: 'viking_rammer', name: 'Viking Rammer', length: 2, maxHP: 260, baseDmg: 26,
+    baseFireRate: 1200, // ms between attacks
+    speed: 0.5, // tiles per second (advances when no enemy ahead)
+    tags: ['Viking','Rammer'], role:'Front', ability: 'On contact: bonus impact dmg', impactBonus:40,
+  },
+  imperial_archer: {
+    id: 'imperial_archer', name: 'Imperial Archer', length: 2, maxHP: 180, baseDmg: 34,
+    baseFireRate: 1500, speed: 0.35, tags:['Imperial','Artillery'], role:'Back', ability:'Ranged volley', range:4,
+  },
+  steam_support: {
+    id: 'steam_support', name: 'Steam Support', length: 2, maxHP: 210, baseDmg: 16,
+    baseFireRate: 1400, speed: 0.45, tags:['Steampunk','Support'], role:'Mid', ability:'Nearby allies +10% fire rate', auraFireRate:0.10, auraRange:1,
+  },
+  // Enemy variants (can reuse or tweak stats)
+  pirate_cutter: { id:'pirate_cutter', name:'Pirate Cutter', length:2, maxHP:210, baseDmg:24, baseFireRate:1300, speed:0.45, tags:['Pirate'], role:'Front', ability:null },
+  pirate_bow: { id:'pirate_bow', name:'Pirate Bow', length:2, maxHP:150, baseDmg:30, baseFireRate:1550, speed:0.4, tags:['Pirate'], role:'Back', ability:null, range:4 },
+};
+
+// Systems (simple stat mods)
+const SYSTEM_LIBRARY = {
+  cannon_battery: { id:'cannon_battery', name:'Cannon Battery', slot:'weapon', desc:'+20% damage', modifiers:{ dmgMult:1.20 } },
+  reinforced_keel: { id:'reinforced_keel', name:'Reinforced Keel', slot:'utility', desc:'+25% max HP', modifiers:{ hpMult:1.25 } },
+  steam_engine: { id:'steam_engine', name:'Steam Engine', slot:'utility', desc:'+20% speed', modifiers:{ speedMult:1.20 } },
+  repair_drones: { id:'repair_drones', name:'Repair Drones', slot:'utility', desc:'Heal 2% max HP per 5s', modifiers:{ regenPct:0.02 } },
+};
+
+// Crew (modifiers with potential conditional effects)
+const CREW_LIBRARY = {
+  gunner: { id:'gunner', name:'Gunner', desc:'-10% fire cooldown', modifiers:{ fireRateMult:0.90 } },
+  boatswain: { id:'boatswain', name:'Boatswain', desc:'Integrity thresholds improved (segment shift +5%)', modifiers:{ integrityShift:0.05 } },
+  engineer: { id:'engineer', name:'Engineer', desc:'+10% max HP & passive minor regen', modifiers:{ hpMult:1.10, regenPct:0.01 } },
+  navigator: { id:'navigator', name:'Navigator', desc:'+15% advance speed', modifiers:{ speedMult:1.15 } },
+};
+
+/****************************** Game State ******************************/
+const GameState = {
+  phase: 'planning', // planning | battle | loot | map | gameover
+  gold: CONFIG.baseGold,
+  energy: CONFIG.baseEnergyPerNode,
+  nodeIndex: 0,
+  map: [],
+  ships: [], // player ships
+  enemyShips: [],
+  systemsPool: [],
+  crewPool: [],
+  inventory: [],
+  lootChoices: [],
+  battleStartTime: 0,
+};
+
+/****************************** Ship Instance ******************************/
+let shipUIDCounter = 1;
+function createShip(templateId, lane = 0, col = 0, owner='player') {
+  const base = SHIP_LIBRARY[templateId];
+  const inst = JSON.parse(JSON.stringify(base));
+  inst.uid = (owner==='player'? 'P':'E') + (shipUIDCounter++);
+  inst.owner = owner;
+  inst.lane = lane; // 0..lanes-1
+  inst.col = col; // leftmost column index for ship bow (player side left)
+  inst.hp = inst.maxHP;
+  inst.systems = []; // installed system IDs
+  inst.crew = []; // installed crew IDs
+  inst.alive = true;
+  inst.cooldown = 500; // initial delay
+  inst.integritySegmentsRemaining = CONFIG.integritySegments; // start full
+  inst.integrityShift = 0; // from crew
+  inst.regenAccum = 0;
+  return inst;
+}
+
+/****************************** Utility Functions ******************************/
+function log(msg) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateResourcesUI() {
+  document.getElementById('resourceBar').innerHTML = `Gold: ${GameState.gold} | Energy: ${GameState.energy} | Node: ${GameState.nodeIndex+1}`;
+}
+
+function setStatus(msg) { document.getElementById('statusMsg').textContent = msg; }
+
+/****************************** Map Generation ******************************/
+function generateMap(nodes=8) {
+  // Simple linear map for MVP; later branching.
+  const arr = [];
+  for (let i=0;i<nodes;i++) {
+    arr.push({ type: (i===nodes-1? 'boss':'battle'), index:i, cleared:false });
+  }
+  GameState.map = arr;
+}
+
+function openMapModal() {
+  const modal = document.getElementById('mapModal');
+  const container = document.getElementById('mapContainer');
+  container.innerHTML = '';
+  const row = document.createElement('div');
+  row.className='nodeRow';
+  GameState.map.forEach(n=>{
+    const b = document.createElement('div');
+    b.className='mapNode';
+    b.textContent = `${n.type === 'battle' ? 'Battle':'Boss'} ${n.index+1}`;
+    if (n.index === GameState.nodeIndex) b.classList.add('current','pulse');
+    if (n.cleared) b.classList.add('done');
+    row.appendChild(b);
+  });
+  container.appendChild(row);
+  modal.style.display='flex';
+}
+
+/****************************** Placement Grid ******************************/
+function buildGrid() {
+  const grid = document.getElementById('laneGrid');
+  grid.innerHTML='';
+  for (let r=0;r<CONFIG.lanes;r++) {
+    for (let c=0;c<CONFIG.cols;c++) {
+      const t = document.createElement('div');
+      t.className='tile';
+      t.dataset.lane=r;
+      t.dataset.col=c;
+      grid.appendChild(t);
+    }
+  }
+}
+
+function shipWorldPosition(lane, col) {
+  return {
+    x: col * (CONFIG.tileSize + 4),
+    y: lane * (CONFIG.tileSize + 4)
+  };
+}
+
+function renderShips() {
+  // Clear existing ship elements
+  document.querySelectorAll('.ship').forEach(e=>e.remove());
+  const board = document.getElementById('board');
+  [...GameState.ships, ...GameState.enemyShips].forEach(ship => {
+    if (!ship.alive) return;
+    const {x,y} = shipWorldPosition(ship.lane, ship.col);
+    const el = document.createElement('div');
+    el.className = 'ship ' + (ship.owner==='player' ? 'player':'enemy');
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.style.width = `calc(${ship.length} * (var(--tile-size) + var(--gap)) - var(--gap))`;
+    el.textContent = ship.name.split(' ').map(w=>w[0]).join('').substring(0,3);
+    el.title = `${ship.name}\nHP ${ship.hp}/${ship.maxHP}`;
+    el.dataset.uid = ship.uid;
+
+    // Integrity segments
+    const integ = document.createElement('div');
+    integ.className='integrity';
+    const thresholds = getIntegrityThresholds(ship); // array high->low
+    for (let i=0;i<CONFIG.integritySegments;i++) {
+      const seg = document.createElement('span');
+      // Determine state by current hp vs thresholds
+      const ratio = ship.hp / ship.maxHP;
+      if (ratio >= thresholds[i]) {
+        seg.classList.add('on');
+      } else if (ratio >= thresholds[i+1] || i === CONFIG.integritySegments-1) {
+        seg.classList.add('mid');
+      } else {
+        seg.classList.add('low');
+      }
+      integ.appendChild(seg);
+    }
+    el.appendChild(integ);
+
+    el.addEventListener('click', ()=> selectShip(ship.uid));
+    board.appendChild(el);
+  });
+}
+
+let selectedShipUID = null;
+function selectShip(uid) {
+  selectedShipUID = uid;
+  document.querySelectorAll('.ship').forEach(e=> e.classList.toggle('selected', e.dataset.uid===uid));
+  updateShipList();
+}
+
+/****************************** Integrity & Stat Computations ******************************/
+function getIntegrityThresholds(ship) {
+  // thresholds expressed as fraction of max HP at which segment considered intact.
+  // e.g., 1.0, 0.67, 0.34, 0 (for 3 segments) with optional shift
+  const base = [1.0];
+  const baseBreaks = [0.67, 0.34, 0];
+  let shift = ship.integrityShift || 0; // shift lowers thresholds? We'll raise resilience: subtract shift
+  baseBreaks.forEach(b => base.push(Math.max(0, b - shift)));
+  return base; // length 4 for comparisons
+}
+
+function lostSegments(ship) {
+  const thresh = getIntegrityThresholds(ship);
+  const ratio = ship.hp / ship.maxHP;
+  let lost=0;
+  // Determine how many segment thresholds have fallen below ratio sequentially
+  if (ratio < thresh[1]) lost++;
+  if (ratio < thresh[2]) lost++;
+  if (ratio < thresh[3]) lost++;
+  return lost;
+}
+
+function effectiveFireCooldown(ship) {
+  let cd = ship.baseFireRate;
+  // Systems & Crew modifiers
+  let dmgMult = 1;
+  let fireRateMult = 1;
+  ship.systems.forEach(id=>{
+    const sys = SYSTEM_LIBRARY[id];
+    if (sys && sys.modifiers.fireRateMult) fireRateMult *= sys.modifiers.fireRateMult;
+  });
+  ship.crew.forEach(id=>{
+    const cr = CREW_LIBRARY[id];
+    if (cr && cr.modifiers.fireRateMult) fireRateMult *= cr.modifiers.fireRateMult;
+  });
+  // Integrity penalty (lost segments -> slower firing: increase cooldown)
+  const ls = lostSegments(ship);
+  const penalty = 1 + (CONFIG.fireRatePenaltyPerLostSegment * ls);
+  return cd * fireRateMult * penalty;
+}
+
+function effectiveDamage(ship) {
+  let dmg = ship.baseDmg;
+  let mult = 1;
+  ship.systems.forEach(id=>{ const s=SYSTEM_LIBRARY[id]; if (s && s.modifiers.dmgMult) mult *= s.modifiers.dmgMult; });
+  return Math.round(dmg * mult);
+}
+
+function applyRegen(ship, dtMs) {
+  // Accumulate regen from systems / crew regenPct per 5s tick basis
+  let regenPct = 0;
+  ship.systems.forEach(id=> { const s=SYSTEM_LIBRARY[id]; if (s && s.modifiers.regenPct) regenPct += s.modifiers.regenPct; });
+  ship.crew.forEach(id=> { const c=CREW_LIBRARY[id]; if (c && c.modifiers.regenPct) regenPct += c.modifiers.regenPct; });
+  if (regenPct > 0) {
+    ship.regenAccum += dtMs;
+    if (ship.regenAccum >= 5000) { // every 5s
+      const amt = Math.round(ship.maxHP * regenPct);
+      ship.hp = Math.min(ship.maxHP, ship.hp + amt);
+      ship.regenAccum = 0;
+      log(`${ship.name} regenerates ${amt} HP`);
+    }
+  }
+}
+
+/****************************** Battle Logic ******************************/
+let battleInterval = null;
+function startBattle() {
+  if (GameState.phase !== 'planning') return;
+  setStatus('Battle in progress');
+  GameState.phase = 'battle';
+  document.getElementById('btnStartBattle').disabled = true;
+  document.getElementById('btnTogglePlacement').disabled = true;
+  GameState.battleStartTime = performance.now();
+  spawnEnemyWave();
+  battleInterval = setInterval(tickBattle, CONFIG.tickRate);
+}
+
+function endBattle(victory) {
+  clearInterval(battleInterval); battleInterval = null;
+  GameState.enemyShips.forEach(s=> s.alive=false);
+  GameState.enemyShips = [];
+  renderShips();
+  if (victory) {
+    log('Victory!');
+    // Rewards: gold + open loot
+    const goldGain = 5 + Math.floor(Math.random()*4);
+    GameState.gold += goldGain;
+    setStatus(`Victory. +${goldGain} gold.`);
+    openLootDraft();
+  } else {
+    log('Defeat... Run Over.');
+    GameState.phase='gameover';
+    setStatus('Defeat');
+    document.getElementById('btnEndRun').disabled=false;
+  }
+  updateResourcesUI();
+}
+
+function spawnEnemyWave() {
+  GameState.enemyShips = [];
+  // Basic: spawn 1-3 enemy ships with simple distribution by nodeIndex difficulty
+  const count = 2 + Math.floor(GameState.nodeIndex/2);
+  for (let i=0;i<count;i++) {
+    const templateIds = ['pirate_cutter','pirate_bow'];
+    const tid = rng.pick(templateIds);
+    const lane = i % CONFIG.lanes;
+    // Spawn near right edge: enemy col indicates leftmost tile (ships face left but we treat col for collision simplistically)
+    const col = CONFIG.cols - SHIP_LIBRARY[tid].length; // right aligned
+    const ship = createShip(tid, lane, col, 'enemy');
+    GameState.enemyShips.push(ship);
+  }
+  renderShips();
+}
+
+function tickBattle() {
+  const now = performance.now();
+  const elapsed = now - GameState.battleStartTime;
+  if (elapsed > CONFIG.battleDurationLimit) {
+    log('Battle timeout -> defeat');
+    endBattle(false); return;
+  }
+  // Update each ship
+  const dt = CONFIG.tickRate;
+  updateFireAndAdvance(GameState.ships, GameState.enemyShips, dt);
+  updateFireAndAdvance(GameState.enemyShips, GameState.ships, dt, true);
+
+  // Regen
+  GameState.ships.forEach(s=> applyRegen(s, dt));
+
+  // Check win/lose
+  const playerAlive = GameState.ships.some(s=> s.alive);
+  const enemiesAlive = GameState.enemyShips.some(s=> s.alive);
+  if (!enemiesAlive) { endBattle(true); return; }
+  if (!playerAlive) { endBattle(false); return; }
+
+  renderShips();
+  updatePhaseProgress(elapsed / CONFIG.battleDurationLimit);
+}
+
+function updateFireAndAdvance(fleet, opponents, dt, enemies=false) {
+  fleet.forEach(ship => {
+    if (!ship.alive) return;
+    // Cooldown
+    ship.cooldown -= dt;
+    // Acquire target (frontmost in same lane within range OR collision)
+    const target = findTarget(ship, opponents);
+    if (target && ship.cooldown <= 0) {
+      const dmg = effectiveDamage(ship);
+      target.hp -= dmg;
+      log(`${ship.name} hits ${target.name} for ${dmg}`);
+      if (target.hp <= 0) { target.alive=false; log(`${target.name} sinks!`); }
+      ship.cooldown = effectiveFireCooldown(ship);
+    }
+    if (!target) {
+      // Advance (player moves right, enemy moves left)
+      const direction = enemies ? -1 : 1;
+      const tileAdvance = ship.speed * (dt/1000); // tiles per dt
+      ship.col += tileAdvance * direction; // fractional for smoothness; rendering uses integer
+      ship.col = clamp(ship.col, 0, CONFIG.cols - ship.length);
+    }
+  });
+  // Snap positions to integer for collision logic simplicity
+  fleet.forEach(s=> { s.col = Math.round(s.col*1000)/1000; });
+}
+
+function clamp(v,min,max){ return v<min?min:(v>max?max:v); }
+
+function findTarget(ship, opponents) {
+  // Within same lane; compute nearest opponent ahead (player looks right, enemy looks left)
+  const laneOpp = opponents.filter(o=> o.alive && o.lane === ship.lane);
+  if (!laneOpp.length) return null;
+  const isEnemy = ship.owner==='enemy';
+  const ahead = isEnemy ? laneOpp.filter(o => o.col < ship.col + ship.length) : laneOpp.filter(o => o.col > ship.col - o.length);
+  // Range: if artillery have greater range based on property range else adjacent/collision
+  let best = null; let bestDist = Infinity;
+  ahead.forEach(op=> {
+    const dist = Math.abs(op.col - ship.col);
+    const maxRange = ship.range !== undefined ? ship.range : 1;
+    if (dist <= maxRange) {
+      if (dist < bestDist) { best=op; bestDist=dist; }
+    }
+  });
+  return best;
+}
+
+/****************************** Loot Draft ******************************/
+function openLootDraft() {
+  GameState.phase='loot';
+  GameState.lootChoices = generateLootChoices(3);
+  const cont = document.getElementById('lootOptions');
+  cont.innerHTML='';
+  GameState.lootChoices.forEach(choice => {
+    const d = document.createElement('div');
+    d.className='lootOption';
+    d.innerHTML = `<strong>${choice.name}</strong><br><small>${choice.desc}</small>`;
+    d.addEventListener('click', ()=> selectLoot(choice));
+    cont.appendChild(d);
+  });
+  document.getElementById('lootModal').style.display='flex';
+}
+
+function generateLootChoices(n) {
+  const out=[];
+  const pools = [Object.values(SYSTEM_LIBRARY), Object.values(CREW_LIBRARY)];
+  for (let i=0;i<n;i++) {
+    const pool = rng.pick(pools);
+    const item = rng.pick(pool);
+    out.push({ type: pool===Object.values(SYSTEM_LIBRARY)? 'system':'crew', id: item.id, name:item.name, desc:item.desc });
+  }
+  return out;
+}
+
+function selectLoot(choice) {
+  if (choice.type==='system') GameState.systemsPool.push(choice.id);
+  else if (choice.type==='crew') GameState.crewPool.push(choice.id);
+  closeLootDraft();
+  proceedToNextNode();
+}
+
+function closeLootDraft() {
+  document.getElementById('lootModal').style.display='none';
+  GameState.lootChoices = [];
+}
+
+/****************************** Progression / Nodes ******************************/
+function proceedToNextNode() {
+  GameState.map[GameState.nodeIndex].cleared=true;
+  GameState.nodeIndex++;
+  if (GameState.nodeIndex >= GameState.map.length) {
+    setStatus('Run Complete!');
+    GameState.phase='gameover';
+    document.getElementById('btnEndRun').disabled=false;
+    return;
+  }
+  GameState.phase='planning';
+  GameState.energy = CONFIG.baseEnergyPerNode;
+  document.getElementById('btnStartBattle').disabled=false;
+  document.getElementById('btnTogglePlacement').disabled=false;
+  setStatus('Planning phase: reposition, equip, then Start Battle');
+  updateResourcesUI();
+  updateShipList();
+}
+
+/****************************** Placement & Equipment ******************************/
+let placementMode = false;
+function togglePlacementMode() {
+  if (GameState.phase!=='planning') return;
+  placementMode = !placementMode;
+  document.getElementById('btnTogglePlacement').textContent = placementMode? 'Exit Placement':'Placement Mode';
+  setStatus(placementMode? 'Placement: drag ships to new tiles':'Placement ended');
+}
+
+// Basic click movement: select then click tile head position
+function enableTileClicks() {
+  document.querySelectorAll('.tile').forEach(tile => {
+    tile.addEventListener('click', () => {
+      if (!placementMode) return;
+      if (!selectedShipUID) return;
+      const ship = GameState.ships.find(s=> s.uid===selectedShipUID);
+      if (!ship) return;
+      const lane = parseInt(tile.dataset.lane,10);
+      const col = parseInt(tile.dataset.col,10);
+      if (col + ship.length > CONFIG.cols) return; // out of bounds
+      // Check overlap
+      if (GameState.ships.some(s=> s.uid!==ship.uid && s.lane===lane && rangesOverlap(col, col+ship.length-1, s.col, s.col+s.length-1))) {
+        setStatus('Cannot overlap'); return;
+      }
+      ship.lane = lane; ship.col = col;
+      renderShips();
+    });
+  });
+}
+
+function rangesOverlap(a1,a2,b1,b2){ return Math.max(a1,b1) <= Math.min(a2,b2); }
+
+function updateShipList() {
+  const list = document.getElementById('shipList');
+  list.innerHTML='';
+  GameState.ships.forEach(ship => {
+    const div = document.createElement('div');
+    div.className='card';
+    const effDmg = effectiveDamage(ship);
+    const lostSegs = lostSegments(ship);
+    div.innerHTML = `<strong>${ship.name}</strong><br>HP: ${ship.hp}/${ship.maxHP}<br>Dmg: ${effDmg} | Cooldown: ${Math.round(effectiveFireCooldown(ship))}ms<br>Lane ${ship.lane+1} Col ${Math.round(ship.col)}<br>Segments lost: ${lostSegs}`;
+    if (selectedShipUID===ship.uid) div.style.outline='2px solid var(--accent)';
+    // Systems
+    if (ship.systems.length) div.innerHTML += `<br>Systems: ${ship.systems.map(id=>SYSTEM_LIBRARY[id].name).join(', ')}`;
+    // Crew
+    if (ship.crew.length) div.innerHTML += `<br>Crew: ${ship.crew.map(id=>CREW_LIBRARY[id].name).join(', ')}`;
+
+    // Equip buttons
+    const sysAvail = GameState.systemsPool.filter(id => !ship.systems.includes(id));
+    if (GameState.phase==='planning' && sysAvail.length) {
+      const select = document.createElement('select');
+      select.innerHTML='<option value="">Install System...</option>' + sysAvail.map(id=>`<option value="${id}">${SYSTEM_LIBRARY[id].name}</option>`).join('');
+      select.addEventListener('change', e=> {
+        if (!e.target.value) return;
+        ship.systems.push(e.target.value);
+        // Apply immediate HP mult if any modifies maxHP (recalc proportionally)
+        recalcShipDerivedStats(ship);
+        GameState.systemsPool = GameState.systemsPool.filter(sid=>sid!==e.target.value);
+        updateShipList(); renderShips(); updatePoolsUI();
+      });
+      div.appendChild(select);
+    }
+    const crewAvail = GameState.crewPool.filter(id => !ship.crew.includes(id));
+    if (GameState.phase==='planning' && crewAvail.length) {
+      const selectC = document.createElement('select');
+      selectC.innerHTML='<option value="">Assign Crew...</option>' + crewAvail.map(id=>`<option value="${id}">${CREW_LIBRARY[id].name}</option>`).join('');
+      selectC.addEventListener('change', e=> {
+        if (!e.target.value) return;
+        if (ship.crew.length >= 2) { setStatus('Crew slots full'); e.target.value=''; return; }
+        ship.crew.push(e.target.value);
+        recalcShipDerivedStats(ship);
+        GameState.crewPool = GameState.crewPool.filter(cid=>cid!==e.target.value);
+        updateShipList(); updatePoolsUI(); renderShips();
+      });
+      div.appendChild(selectC);
+    }
+
+    div.addEventListener('click', ()=> selectShip(ship.uid));
+    list.appendChild(div);
+  });
+}
+
+function recalcShipDerivedStats(ship) {
+  // Recalculate maxHP multipliers from systems & crew, preserving current HP proportionally
+  const prevMax = ship.maxHP;
+  let hpMult = 1;
+  let integrityShift = 0;
+  ship.systems.forEach(id=> { const s=SYSTEM_LIBRARY[id]; if (s.modifiers.hpMult) hpMult *= s.modifiers.hpMult; });
+  ship.crew.forEach(id=> { const c=CREW_LIBRARY[id]; if (c.modifiers.hpMult) hpMult *= c.modifiers.hpMult; if (c.modifiers.integrityShift) integrityShift += c.modifiers.integrityShift; });
+  ship.maxHP = Math.round(SHIP_LIBRARY[ship.id].maxHP * hpMult);
+  ship.integrityShift = integrityShift;
+  const ratio = ship.hp / prevMax;
+  ship.hp = Math.round(ship.maxHP * ratio);
+}
+
+function updatePoolsUI() {
+  const crewList = document.getElementById('crewList');
+  crewList.innerHTML='';
+  GameState.crewPool.forEach(id=> {
+    const c = CREW_LIBRARY[id];
+    const div = document.createElement('div');
+    div.className='card';
+    div.innerHTML=`<strong>${c.name}</strong><br>${c.desc}`;
+    crewList.appendChild(div);
+  });
+  const sysList = document.getElementById('systemList');
+  sysList.innerHTML='';
+  GameState.systemsPool.forEach(id=> {
+    const s = SYSTEM_LIBRARY[id];
+    const div = document.createElement('div');
+    div.className='card';
+    div.innerHTML=`<strong>${s.name}</strong><br>${s.desc}`;
+    sysList.appendChild(div);
+  });
+}
+
+/****************************** Repairs ******************************/
+function attemptRepair() {
+  if (GameState.phase!=='planning') return;
+  if (GameState.gold < CONFIG.repairCost) { setStatus('Not enough gold for repairs'); return; }
+  GameState.gold -= CONFIG.repairCost;
+  GameState.ships.forEach(ship => {
+    const missing = ship.maxHP - ship.hp;
+    if (missing>0) {
+      const restore = Math.round(missing * (CONFIG.repairAmountPercent/100));
+      ship.hp += restore;
+    }
+  });
+  updateResourcesUI(); updateShipList(); renderShips();
+  setStatus('Repaired fleet');
+}
+
+/****************************** Tabs ******************************/
+function initTabs() {
+  document.querySelectorAll('#tabs button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('#tabs button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.panelView').forEach(p=> p.classList.remove('active'));
+      document.getElementById('panel_'+tab).classList.add('active');
+    });
+  });
+}
+
+/****************************** Phase Progress Bar ******************************/
+function updatePhaseProgress(fraction) {
+  const el = document.getElementById('phaseProg');
+  el.style.width = (Math.min(1, Math.max(0, fraction))*100) + '%';
+}
+
+/****************************** Initialization ******************************/
+function initFleet() {
+  GameState.ships = [
+    createShip('viking_rammer', 0, 0, 'player'),
+    createShip('imperial_archer', 2, 0, 'player'),
+    createShip('steam_support', 4, 0, 'player'),
+  ];
+  GameState.ships.forEach(s=> recalcShipDerivedStats(s));
+}
+
+function startRun() {
+  generateMap();
+  initFleet();
+  buildGrid();
+  enableTileClicks();
+  updateResourcesUI();
+  updateShipList();
+  updatePoolsUI();
+  renderShips();
+  setStatus('Planning phase: position fleet, equip systems, then battle.');
+}
+
+/****************************** Loot Skip ******************************/
+function skipLoot() { closeLootDraft(); proceedToNextNode(); }
+
+/****************************** Event Listeners ******************************/
+window.addEventListener('DOMContentLoaded', () => {
+  startRun();
+  initTabs();
+  document.getElementById('btnStartBattle').addEventListener('click', startBattle);
+  document.getElementById('btnTogglePlacement').addEventListener('click', togglePlacementMode);
+  document.getElementById('btnRepair').addEventListener('click', attemptRepair);
+  document.getElementById('btnSkipLoot').addEventListener('click', skipLoot);
+  document.getElementById('btnOpenMap').addEventListener('click', openMapModal);
+  document.getElementById('btnCloseMap').addEventListener('click', ()=> document.getElementById('mapModal').style.display='none');
+  document.getElementById('btnEndRun').addEventListener('click', ()=> location.reload());
+  document.getElementById('btnRepair').disabled = false;
+});
+
+</script>
+</body>
+</html>
