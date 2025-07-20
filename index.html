@@ -802,7 +802,7 @@ const canvas=document.getElementById('battleCanvas'); const ctx=canvas.getContex
     ctx.restore();
   }
 
-
+}
 
 function drawHexBG(){ ctx.save(); ctx.strokeStyle='#143047'; ctx.lineWidth=1; const maxQ=CONFIG.enemyBaseQ+2; for(let q=-1;q<=maxQ;q++){ for(let r=0;r<CONFIG.rows;r++){ const p=axialToPixel(q,r); if(p.x<40||p.x>canvas.width-40) continue; drawHex(p.x,p.y,CONFIG.hexRadius); } } ctx.restore(); }
 function drawHex(cx,cy,r){ ctx.beginPath(); for(let i=0;i<6;i++){ const a=(Math.PI/180)*(60*i -30); const x=cx+r*Math.cos(a), y=cy+r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); ctx.stroke(); }
