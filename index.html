@@ -38,7 +38,22 @@
   .deployCell.filled{border-style:solid;opacity:1;}
   .deployCell.drag-hover{background:#142d3c;}
   #benchLabel{font-size:12px;opacity:.8;margin-top:4px;}
-  .token{background:#103042;border:2px solid #226082;border-radius:10px;padding:4px 6px;font-size:10px;display:flex;flex-direction:column;gap:2px;width:150px;cursor:grab;user-select:none;position:relative;}
+  .token{
+  background:#103042;
+  border:2px solid #226082;
+  border-radius:10px;
+  padding:4px 6px;
+  font-size:10px;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  width:150px;
+
+  /* ▼ NEW: make the whole card draggable, not just the badge */
+  height:90px;                 /* roughly the hex height */
+  align-items:center;
+  justify-content:center;
+}
   .token h5{margin:0;font-size:12px;}
   .token .hp{font-size:10px;opacity:.8;}
   .rarity-common{border-color:#33536e;}
@@ -320,10 +335,12 @@ function makeToken (ship) {
     dragType = 'grid';
     draggingShipRef = ship;
     e.dataTransfer.effectAllowed = 'move';
-  });
+    t.style.pointerEvents = 'none';
+ });
   t.addEventListener('dragend', () => {
     dragType = null;
     draggingShipRef = null;
+    t.style.pointerEvents = 'auto';
   });
 
   t.addEventListener('mouseenter', () => showShipStats(ship)); // NEW
