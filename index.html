@@ -306,11 +306,13 @@ function makeToken (ship) {
   const t = document.createElement('div');
   t.className = 'token';
   t.draggable  = true;
+  t.style.pointerEvents = 'auto';
   t.dataset.uid = ship.uid;
 
-  /* ↓ JUST this single badge now */
+    /* ↓ JUST this single badge now */
   t.innerHTML =
-    `<div class="fusionBadge">T${ship.tier} (${ship.copies}/${CONFIG.fusionCopies})</div>`;
+    `<div class="fusionBadge">T${ship.tier}</div>`;   // only show tier
+
 
   /* keep the existing drag / hover listeners but
      swap tooltip calls for our new stats‑panel helpers ↓ */
