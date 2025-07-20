@@ -644,9 +644,19 @@ function drawShips(){
 function drawShip(s){ const r=CONFIG.hexRadius*0.65; ctx.save(); ctx.translate(s.x,s.y); ctx.globalAlpha=s.alive?1:0.25; const flashA=s.flashT>0? s.flashT/CONFIG.damageFlash:0; ctx.fillStyle=blend(s.color,'#ffffff',flashA*0.85); ctx.strokeStyle='#0d2536'; ctx.lineWidth=2; drawShape(s.shape,r); ctx.fill(); ctx.stroke(); const max=effectiveMaxHP(s); const pct=s.hp/max; const bw=r*1.5, bh=6; ctx.fillStyle='#1d3544'; ctx.fillRect(-bw/2,r+4,bw,bh); ctx.fillStyle=pct>0.6?'#53c97d':pct>0.3?'#f0c05a':'#e25d5d'; ctx.fillRect(-bw/2,r+4,bw*pct,bh); ctx.strokeStyle='#0a1b27'; ctx.strokeRect(-bw/2,r+4,bw,bh); if(s.shield>0){ ctx.fillStyle='#66c6ff'; ctx.fillRect(-bw/2,r+4+bh,bw*(s.shield/(max*1.2)),3); } ctx.fillStyle='#fff'; ctx.font='11px sans-serif'; ctx.textAlign='center'; ctx.fillText('T'+s.tier,0,-r-6); ctx.restore(); }
 function drawShape(shape,r){ ctx.beginPath(); switch(shape){ case 'hex': for(let i=0;i<6;i++){ const a=(Math.PI/180)*(60*i-30); const x=r*Math.cos(a),y=r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); break; case 'triangle': for(let i=0;i<3;i++){ const a=(Math.PI/180)*(120*i-90); const x=r*Math.cos(a),y=r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); break; case 'gear': for(let i=0;i<12;i++){ const a=i*Math.PI/6; const rr=i%2?r*0.55:r; ctx.lineTo(rr*Math.cos(a), rr*Math.sin(a)); } ctx.closePath(); break; case 'diamond': ctx.moveTo(0,-r); ctx.lineTo(r*0.8,0); ctx.lineTo(0,r); ctx.lineTo(-r*0.8,0); ctx.closePath(); break; case 'shuriken': for(let i=0;i<8;i++){ const a=i*Math.PI/4; const rr=i%2?r*0.4:r; ctx.lineTo(rr*Math.cos(a), rr*Math.sin(a)); } ctx.closePath(); break; case 'octagon': for(let i=0;i<8;i++){ const a=(Math.PI/4)*i; const x=r*Math.cos(a),y=r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); break; case 'lightning': ctx.moveTo(-r*0.3,-r); ctx.lineTo(r*0.15,-r*0.1); ctx.lineTo(-r*0.05,-r*0.05); ctx.lineTo(r*0.3,r); ctx.lineTo(-r*0.15,r*0.05); ctx.lineTo(r*0.05,r*0.1); ctx.closePath(); break; case 'pentagon': for(let i=0;i<5;i++){ const a=(Math.PI*2/5)*i - Math.PI/2; const x=r*Math.cos(a),y=r*Math.sin(a); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.closePath(); break; case 'eye': ctx.ellipse(0,0,r,r*0.55,0,0,Math.PI*2); break; case 'harpoon': ctx.moveTo(-r*0.6,-r*0.2); ctx.lineTo(r*0.2,-r*0.2); ctx.lineTo(r*0.6,-r); ctx.lineTo(r*0.6,r); ctx.lineTo(r*0.2,0.2*r); ctx.lineTo(-r*0.6,0.2*r); ctx.closePath(); break; default: ctx.arc(0,0,r,0,Math.PI*2); }
 }
-function drawProjectiles(){ ctx.save(); state.projectiles.forEach(p=>{ ctx.beginPath(); ctx.fillStyle=p.color; ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); }); ctx.restore();
-}\n}
+function drawProjectiles() {
+  ctx.save();
+  state.projectiles.forEach(p => {
+    ctx.beginPath();
+    ctx.fillStyle = p.color;
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
 /* Events */
+
 window.addEventListener('DOMContentLoaded', () => {
   /* ---------- buttons ---------- */
   document.getElementById('btnRoll').addEventListener('click', rollShop);
