@@ -684,50 +684,77 @@ function finishBattle(victory){ state.phase='result'; cancelAnimationFrame(battl
 function showOverlay(resultCode){ const ov=document.getElementById('overlay'); ov.style.display='flex'; const title=document.getElementById('resultTitle'); const stats=document.getElementById('resultStats'); if(resultCode==='gamewin'){ title.textContent='YOU WIN!'; stats.textContent=`Final Time ${(state.elapsed/1000).toFixed(1)}s • Wins ${state.wins}`; } else if(resultCode==='gamelose'){ title.textContent='Game Over'; stats.textContent=`Wins ${state.wins} • Reached Round ${state.round}`; } else { title.textContent=(resultCode==='win'?'Victory':'Defeat'); stats.textContent='Duration: '+(state.elapsed/1000).toFixed(1)+'s'; } document.getElementById('btnCloseOverlay').textContent = state.gameOver? 'Restart':'Continue'; }
 function closeOverlay(){ document.getElementById('overlay').style.display='none'; }
 function nextRound () {
-  /* -------- game over? then start a brand‑new run -------- */
-  if (state.gameOver) {
-    resetGame();
-    return;
-  }
 
-  /* -------- advance to the next round -------- */
+  /* -------- game over? then start a brand‑new run -------- */
+  if (state.gameOver) { resetGame(); return; }
+
+  /* ===== 1. advance round & basic UI labels  ===== */
   state.round++;
   state.phase = 'shop';
 
-  /* --- UI labels --- */
   document.getElementById('phaseIndicator').textContent = 'SHOP';
   document.querySelector('header h1').textContent       = 'Fleet Battle – Shop Phase';
 
-  /* --- show shop + canvas (grid stays visible) --- */
   document.getElementById('battleWrapper').style.display = 'block';
   document.getElementById('shopScreen').style.display    = 'block';
 
-  /* --- economy & team limit --- */
-  state.gold      += CONFIG.incomePerRound;
-  state.teamLimit  = CONFIG.roundTeamLimits[
-                      Math.min(state.round - 1, CONFIG.roundTeamLimits.length - 1)];
+  /* ===== 2. economy & team‑limit scaling ===== */
+  state.gold     += CONFIG.incomePerRound;
+  state.teamLimit = CONFIG.roundTeamLimits[
+                     Math.min(state.round - 1, CONFIG.roundTeamLimits.length - 1)];
+
   document.getElementById('teamLimit').textContent = state.teamLimit;
   document.getElementById('roundNum').textContent  = state.round;
   updateGold();
 
-  /* -------- refresh existing ships (heal & cleanse) -------- */
-  state.gridHex.forEach(s => {
+  /* =========================================================
+     3.  REBUILD PLAYER GRID ---------------------------------
+     ========================================================= */
+
+  /* ---- (a) survivors from previous battle ---- */
+  const survivors = state.battleShips
+        .filter(s => s.side === 'player' && s.alive)
+        .slice(0, state.teamLimit);                // safety check
+
+  /* ---- (b) clear the placement map ---- */
+  state.gridHex.clear();
+
+  /* ---- (c) heal / cleanse & drop into fresh slots ---- */
+  let slotIndex = 0;
+  survivors.forEach(s => {
+
+    /* full heal & status reset */
     s.alive     = true;
-    s.hp        = effectiveMaxHP(s);  // full health
+    s.hp        = effectiveMaxHP(s);
     s.shield    = 0;
     s.burns     = [];
     s.slowMult  = 1;
     s.fireTimer = 0;
+
+    /* pick next legal shop slot (left half) */
+    const slot  = SHOP_HEX_SLOTS[slotIndex++ % SHOP_HEX_SLOTS.length];
+    placeShipAtHex(s, slot.q, slot.r);
   });
 
-  /* -------- shop UI -------- */
+  /* ---- (d) shrink / grow team size if needed ---- */
+  while (state.gridHex.size > state.teamLimit) {
+    // simple strategy: remove last added
+    const lastKey = Array.from(state.gridHex.keys()).pop();
+    state.gridHex.delete(lastKey);
+  }
+
+  /* ---- (e) reset battle data containers ---- */
+  state.battleShips = [];
+  state.projectiles = [];
+
+  /* ===== 4. shop refresh ===== */
   flashStatus('Round ' + state.round + ' – New shop.');
   state.shopLocked = false;
   document.getElementById('btnLock').textContent = 'Lock';
   generateShop();
-  generateEnemyPreview();
   updateBattleBtn();
 }
+
 
 function resetGame(){ state.round=1; state.gold=CONFIG.baseGold; state.lives=CONFIG.lifePool; state.wins=0; state.gameOver=false; state.grid=createGrid(); state.gridHex.clear(); document.getElementById('teamLimit').textContent=CONFIG.roundTeamLimits[0]; document.getElementById('roundNum').textContent=1; updateLivesWins(); updateGold(); generateShop(); generateEnemyPreview(); renderShop();  updateBattleBtn(); flashStatus('New game started.',false); document.getElementById('phaseIndicator').textContent='SHOP'; document.querySelector('header h1').textContent='Fleet Battle – Shop Phase'; document.getElementById('battleWrapper').style.display='block'; document.getElementById('shopScreen').style.display='block'; }
 
