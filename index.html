@@ -496,8 +496,41 @@ function stepTowardRange(s, target, occ){
 function makeProjectile(from,to,override){ const ang=Math.atan2(to.y-from.y,to.x-from.x); return {x:from.x,y:from.y,vx:Math.cos(ang)*CONFIG.projectileSpeed,vy:Math.sin(ang)*CONFIG.projectileSpeed,r:5,from:from.uid,target:to.uid,color:from.side==='player'?'#a9f3ff':'#ff9f84',alive:true,dmg:override||effectiveDamage(from),meta:{chainLeft: from.ability && from.ability.id==='chain'? from.ability.jumps:0, hit:new Set()}}; }
 
 /* Battle Loop */
+
+function speedForElapsed(ms){
+  const step = Math.floor(ms / 5000);   // every 5 s
+  return Math.pow(1.5, step);           // 1 → 1.5 → 2.25 → 3.375 …
+}
+
 let battleRaf=null;
-function loopBattle(t){ if(state.phase!=='battle') return; const dt=t-state.lastTime; state.lastTime=t; state.elapsed=t-state.startTime; updateTimer(); processPeriodic(dt); updateBattle(dt); drawBattle(); const playerAlive=state.battleShips.some(s=>s.alive&&s.side==='player'); const enemyAlive=state.battleShips.some(s=>s.alive&&s.side==='enemy'); if(!playerAlive || !enemyAlive){ finishBattle(playerAlive && !enemyAlive); return; } battleRaf=requestAnimationFrame(loopBattle); }
+function loopBattle(t){
+  if (state.phase !== 'battle') return;
+
+  /* ---------- time bookkeeping ---------- */
+  const rawDt = t - state.lastTime;       // real‑time milliseconds since last frame
+  state.lastTime = t;
+  state.elapsed  = t - state.startTime;   // total real‑time elapsed this battle
+
+  /* ---------- exponential speed ramp (1.0 → 1.5 → 2.25 … every 5 s) ---------- */
+  const speed   = speedForElapsed(state.elapsed);   // helper returns 1.5^step
+  const dt      = rawDt * speed;                    // scaled delta used by sim
+
+  /* ---------- update & render ---------- */
+  updateTimer();            // still shows real‑time on UI
+  processPeriodic(dt);      // abilities that tick over time
+  updateBattle(dt);         // movement, firing, projectiles, DOTs
+  drawBattle();
+
+  /* ---------- win / loss check ---------- */
+  const playerAlive = state.battleShips.some(s => s.alive && s.side === 'player');
+  const enemyAlive  = state.battleShips.some(s => s.alive && s.side === 'enemy');
+  if (!playerAlive || !enemyAlive){
+    finishBattle(playerAlive && !enemyAlive);
+    return;
+  }
+
+  battleRaf = requestAnimationFrame(loopBattle);
+}
 function updateBattle(dt){
   // (A) Pixel easing
   state.battleShips.forEach(s=>{
@@ -633,7 +666,51 @@ function finishBattle(victory){ state.phase='result'; cancelAnimationFrame(battl
 /* Overlay / Rounds */
 function showOverlay(resultCode){ const ov=document.getElementById('overlay'); ov.style.display='flex'; const title=document.getElementById('resultTitle'); const stats=document.getElementById('resultStats'); if(resultCode==='gamewin'){ title.textContent='YOU WIN!'; stats.textContent=`Final Time ${(state.elapsed/1000).toFixed(1)}s • Wins ${state.wins}`; } else if(resultCode==='gamelose'){ title.textContent='Game Over'; stats.textContent=`Wins ${state.wins} • Reached Round ${state.round}`; } else { title.textContent=(resultCode==='win'?'Victory':'Defeat'); stats.textContent='Duration: '+(state.elapsed/1000).toFixed(1)+'s'; } document.getElementById('btnCloseOverlay').textContent = state.gameOver? 'Restart':'Continue'; }
 function closeOverlay(){ document.getElementById('overlay').style.display='none'; }
-function nextRound(){ if(state.gameOver){ resetGame(); return; } state.round++; state.phase='shop'; document.getElementById('phaseIndicator').textContent='SHOP'; document.querySelector('header h1').textContent='Fleet Battle – Shop Phase'; document.getElementById('battleWrapper').style.display='block'; document.getElementById('shopScreen').style.display='block'; state.gold += CONFIG.incomePerRound; state.gridHex.clear(); state.teamLimit=CONFIG.roundTeamLimits[Math.min(state.round-1, CONFIG.roundTeamLimits.length-1)]; document.getElementById('teamLimit').textContent=state.teamLimit; document.getElementById('roundNum').textContent=state.round; updateGold(); flashStatus('Round '+state.round+' – New shop.'); state.shopLocked=false; document.getElementById('btnLock').textContent='Lock'; generateShop(); updateBattleBtn(); }
+function nextRound () {
+  /* -------- game over? then start a brand‑new run -------- */
+  if (state.gameOver) {
+    resetGame();
+    return;
+  }
+
+  /* -------- advance to the next round -------- */
+  state.round++;
+  state.phase = 'shop';
+
+  /* --- UI labels --- */
+  document.getElementById('phaseIndicator').textContent = 'SHOP';
+  document.querySelector('header h1').textContent       = 'Fleet Battle – Shop Phase';
+
+  /* --- show shop + canvas (grid stays visible) --- */
+  document.getElementById('battleWrapper').style.display = 'block';
+  document.getElementById('shopScreen').style.display    = 'block';
+
+  /* --- economy & team limit --- */
+  state.gold      += CONFIG.incomePerRound;
+  state.teamLimit  = CONFIG.roundTeamLimits[
+                      Math.min(state.round - 1, CONFIG.roundTeamLimits.length - 1)];
+  document.getElementById('teamLimit').textContent = state.teamLimit;
+  document.getElementById('roundNum').textContent  = state.round;
+  updateGold();
+
+  /* -------- refresh existing ships (heal & cleanse) -------- */
+  state.gridHex.forEach(s => {
+    s.alive     = true;
+    s.hp        = effectiveMaxHP(s);  // full health
+    s.shield    = 0;
+    s.burns     = [];
+    s.slowMult  = 1;
+    s.fireTimer = 0;
+  });
+
+  /* -------- shop UI -------- */
+  flashStatus('Round ' + state.round + ' – New shop.');
+  state.shopLocked = false;
+  document.getElementById('btnLock').textContent = 'Lock';
+  generateShop();
+  updateBattleBtn();
+}
+
 function resetGame(){ state.round=1; state.gold=CONFIG.baseGold; state.lives=CONFIG.lifePool; state.wins=0; state.gameOver=false; state.grid=createGrid(); state.gridHex.clear(); document.getElementById('teamLimit').textContent=CONFIG.roundTeamLimits[0]; document.getElementById('roundNum').textContent=1; updateLivesWins(); updateGold(); generateShop(); renderShop();  updateBattleBtn(); flashStatus('New game started.',false); document.getElementById('phaseIndicator').textContent='SHOP'; document.querySelector('header h1').textContent='Fleet Battle – Shop Phase'; document.getElementById('battleWrapper').style.display='block'; document.getElementById('shopScreen').style.display='block'; }
 
 /* Panels */
