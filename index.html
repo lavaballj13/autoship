@@ -38,23 +38,21 @@
   .deployCell.filled{border-style:solid;opacity:1;}
   .deployCell.drag-hover{background:#142d3c;}
   #benchLabel{font-size:12px;opacity:.8;margin-top:4px;}
-.token{
-  background:#103042;
-  border:2px solid #226082;
-  border-radius:10px;
-  padding:4px 6px;
-  font-size:10px;
-  display:flex;
-  flex-direction:column;
-  gap:2px;
-  width:150px;
-  height:90px;
-  align-items:center;
-  justify-content:center;
-  
-  /* NEW — let the mouse actually hit the token */
-  pointer-events:auto;
+.token {
+  background: #103042;
+  border: 2px solid #226082;
+  border-radius: 10px;
+  padding: 4px 6px;
+  font-size: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 150px;
+
+  /* let the mouse actually hit the token */
+  pointer-events: auto;
 }
+
 
   .token h5{margin:0;font-size:12px;}
   .token .hp{font-size:10px;opacity:.8;}
@@ -860,8 +858,21 @@ function syncTokenLayer(){
     const tok = makeToken(ship);               // re‑uses existing DOM maker
     const pos = axialToPixel(ship.q, ship.r);
     tok.style.position = 'absolute';
-    tok.style.left  = (pos.x - 75) + 'px';     // 75 = token half‑width
-    tok.style.top   = (pos.y - 20) + 'px';     // vertical tweak
+    // size the invisible hit‑box to exactly cover the hex
+    const hexW = CONFIG.hexRadius * Math.sqrt(3);   // full width  ≈ 1.732 R
+    const hexH = CONFIG.hexRadius * 2;              // full height = 2 R
+    
+    tok.style.width  = hexW + 'px';
+    tok.style.height = hexH + 'px';
+    tok.style.left   = (pos.x - hexW / 2) + 'px';
+    tok.style.top    = (pos.y - hexH / 2) + 'px';
+    
+    /* make it transparent and click‑through visually,
+       but still catch pointer events for dragging     */
+    tok.style.background = 'transparent';
+    tok.style.border     = 'none';
+    tok.style.clipPath   = 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)';
+
     layer.appendChild(tok);
   });
 }
