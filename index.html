@@ -2,496 +2,685 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Fleet Battle Prototype - Drag & Card Upgrades</title>
+<title>Fleet Battle (Hex Grid + Range + Drag) — Clean</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
-  :root {
-    --bg:#0b1420; --panel:#111e2c; --accent:#3fa9f5; --accent2:#4cd2b8; --danger:#e25d5d; --warn:#f0c05a; --ok:#53c97d;
-    --battle-w: 1080px; --battle-h: 460px;
-    font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
-  }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:#e9f4ff; display:flex; flex-direction:column; min-height:100vh; }
-  header { padding:8px 14px; background:#08111b; font-size:14px; letter-spacing:.5px; display:flex; justify-content:space-between; align-items:center; }
-  header h1 { margin:0; font-size:16px; font-weight:600; }
-  #battleWrapper { margin:8px auto 0; width:var(--battle-w); position:relative; }
-  #battleCanvas { background:#091722; width:100%; height:var(--battle-h); border:6px solid #0d2536; display:block; }
-  #bottomBar { width:var(--battle-w); margin:0 auto; background:var(--panel); border:4px solid #0d2536; display:flex; flex-direction:column; padding:6px 10px 10px; gap:8px; }
-  #cardTray { display:flex; gap:12px; overflow-x:auto; padding:4px 4px 8px; }
-  .card { flex:0 0 140px; background:#0e1f2d; border:2px solid #1f3d54; border-radius:10px; padding:8px 8px 10px; position:relative; cursor:grab; user-select:none; }
-  .card.dragging { opacity:.4; cursor:grabbing; }
-  .card h4 { margin:0 0 4px; font-size:13px; letter-spacing:.5px; }
-  .card small { font-size:11px; line-height:1.25; opacity:.85; }
-  .rarity-common { border-color:#33536e; }
-  .rarity-rare { border-color:#3fa9f5; box-shadow:0 0 0 1px #3fa9f5aa; }
-  .rarity-epic { border-color:#c06bff; box-shadow:0 0 0 2px #c06bffaa; }
-
-  #infoBar { display:flex; gap:16px; flex-wrap:wrap; font-size:12px; }
-  #timer { font-weight:600; }
-  #status { flex:1; }
-  #shipStatsPanel { width:var(--battle-w); margin:6px auto 0; display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:8px; }
-  .shipStatsCard { background:#0e1f2d; border:2px solid #1f3d54; border-radius:8px; padding:6px 8px 8px; font-size:11px; position:relative; }
-  .shipStatsCard .title { font-weight:600; font-size:12px; margin-bottom:2px; }
-  .shipStatsCard .tier { font-size:10px; opacity:.8; }
-  .shipStatsCard.drag-target { outline:2px dashed var(--accent); }
-  .shipStatsCard.drag-card-hover { background:#142d3c; }
-  .upgradePulse { animation:upPulse 1s ease-out; }
-  @keyframes upPulse { 0%{box-shadow:0 0 0 0 rgba(79,243,180,.7);} 70%{box-shadow:0 0 0 14px rgba(79,243,180,0);} 100%{box-shadow:0 0 0 0 rgba(79,243,180,0);} }
-
-  button { background:var(--accent); border:none; color:#04131f; padding:6px 10px; font-weight:600; border-radius:5px; cursor:pointer; font-size:12px; }
-  button:disabled { opacity:.45; cursor:not-allowed; }
-  #overlay { position:fixed; inset:0; display:none; align-items:center; justify-content:center; backdrop-filter:blur(3px); background:rgba(0,0,0,.55); }
-  #overlay .inner { background:#0f2231; padding:28px 34px; border:2px solid var(--accent); border-radius:14px; text-align:center; width:380px; }
-  #overlay h2 { margin-top:0; }
-  canvas { image-rendering:pixelated; }
-  #legend { margin:2px auto 4px; width:var(--battle-w); font-size:11px; opacity:.65; display:flex; justify-content:space-between; }
-  #legend span { margin-right:18px; }
+  :root { --bg:#0b1420; --panel:#111e2c; --accent:#3fa9f5; --danger:#e25d5d; --warn:#f0c05a; --ok:#53c97d; --battle-w:1080px; --battle-h:560px; font-family:system-ui,"Segoe UI",Roboto,Arial,sans-serif; }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:#e9f4ff;display:flex;flex-direction:column;min-height:100vh;}
+  header{padding:8px 14px;background:#08111b;font-size:14px;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center;}
+  header h1{margin:0;font-size:16px;font-weight:600;}
+  #battleWrapper{margin:8px auto 0;width:var(--battle-w);position:relative;}
+  #battleCanvas{background:#091722;width:100%;height:var(--battle-h);border:6px solid #0d2536;display:block;cursor:grab;}
+  #legend{margin:2px auto 4px;width:var(--battle-w);font-size:11px;opacity:.65;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+  #shipStatsPanel{width:var(--battle-w);margin:6px auto 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;}
+  .shipStatsCard{background:#0e1f2d;border:2px solid #1f3d54;border-radius:8px;padding:6px 8px 8px;font-size:11px;position:relative;}
+  .shipStatsCard .title{font-weight:600;font-size:12px;margin-bottom:2px;}
+  .shipStatsCard .tier{font-size:10px;opacity:.8;}
+  .shipStatsCard.drag-card-hover{background:#142d3c;}
+  .upgradePulse{animation:upPulse 1s ease-out;}
+  @keyframes upPulse{0%{box-shadow:0 0 0 0 rgba(79,243,180,.7);}70%{box-shadow:0 0 0 14px rgba(79,243,180,0);}100%{box-shadow:0 0 0 0 rgba(79,243,180,0);}}
+  #bottomBar{width:var(--battle-w);margin:0 auto;background:var(--panel);border:4px solid #0d2536;display:flex;flex-direction:column;padding:6px 10px 10px;gap:8px;}
+  #cardTray{display:flex;gap:12px;overflow-x:auto;padding:4px 4px 8px;}
+  .card{flex:0 0 140px;background:#0e1f2d;border:2px solid #1f3d54;border-radius:10px;padding:8px 8px 10px;position:relative;cursor:grab;user-select:none;}
+  .card.dragging{opacity:.35;cursor:grabbing;}
+  .card h4{margin:0 0 4px;font-size:13px;letter-spacing:.5px;}
+  .card small{font-size:11px;line-height:1.25;opacity:.85;}
+  .rarity-common{border-color:#33536e;}
+  .rarity-rare{border-color:#3fa9f5;box-shadow:0 0 0 1px #3fa9f5aa;}
+  .rarity-epic{border-color:#c06bff;box-shadow:0 0 0 2px #c06bffaa;}
+  .card.reject{animation:shake .4s;}
+  @keyframes shake{0%,100%{transform:translateX(0);}25%{transform:translateX(-6px);}50%{transform:translateX(6px);}75%{transform:translateX(-4px);}}
+  #infoBar{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;}
+  #timer{font-weight:600;}
+  #status{flex:1;}
+  button{background:var(--accent);border:none;color:#04131f;padding:6px 10px;font-weight:600;border-radius:5px;cursor:pointer;font-size:12px;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  #overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);background:rgba(0,0,0,.55);}
+  #overlay .inner{background:#0f2231;padding:28px 34px;border:2px solid var(--accent);border-radius:14px;text-align:center;width:380px;}
+  #overlay h2{margin-top:0;}
+  #rangeToggle{margin-left:8px;}
+  canvas{image-rendering:pixelated;}
 </style>
 </head>
 <body>
 <header>
-  <h1>Fleet Battle (Drag & Upgrade)</h1>
-  <div id="headerControls">
+  <h1>Fleet Battle (Hex Range)</h1>
+  <div>
+    <label style="font-size:11px;display:inline-flex;align-items:center;gap:4px;">Show Ranges <input type="checkbox" id="rangeToggle" checked></label>
     <button id="btnStart">Start Battle</button>
     <button id="btnReset" disabled>Reset</button>
   </div>
 </header>
 <div id="battleWrapper">
-  <canvas id="battleCanvas" width="1080" height="460"></canvas>
+  <canvas id="battleCanvas" width="1080" height="560"></canvas>
 </div>
-<div id="legend"><span>Drag ships (before battle) to reposition • Drag cards onto ships to apply upgrades</span><span id="timer">00.0s</span></div>
+<div id="legend">
+  <span>Drag ships (planning phase) onto player hexes (q=0..2). Archer long range; others shorter. Ships auto-step forward when no targets inside *hex range*.</span>
+  <span id="timer">00.0s</span>
+</div>
 <div id="shipStatsPanel"></div>
 <div id="bottomBar">
   <div id="cardTray"></div>
-  <div id="infoBar"><div id="status">Ready.</div><div>Fire Rate ↓ upgrades are multiplicative.</div></div>
+  <div id="infoBar"><div id="status">Ready.</div><div>Blueprint fusion = 2 duplicates / tier (max III).</div></div>
 </div>
 <div id="overlay"><div class="inner"><h2 id="resultTitle">Victory</h2><p id="resultStats"></p><button id="btnCloseOverlay">Close</button></div></div>
-<script>
-/* =============================================================
-   Drag & Card Upgrade Prototype (Stationary)
-   NEW FEATURES vs previous:
-     - Drag player ships to reposition BEFORE battle (snap to nearest lane column slot).
-     - Card tray with upgrade "cards" rendered as playing cards.
-     - Drag & drop card onto shipStatsCard OR ship on canvas to apply.
-     - Duplicate ship blueprints accumulate; when a threshold met => FUSION upgrade (Tier++).
-     - Ship stats panel updates dynamically (HP, DMG, Fire Rate, Tier, Applied Mods).
-     - Visual pulse on upgrade / fusion.
-   ============================================================= */
 
-/***************** CONFIG *****************/
+<script>
+/* =================== CONFIG =================== */
 const CONFIG = {
-  lanes: 5,
-  width: 1080,
-  height: 460,
-  playerX: 150,
-  enemyX: 930,
-  projectileSpeed: 430,
-  frameRate: 60,
-  lanePaddingY: 36,
-  cardFusionThreshold: 2, // number of blueprint duplicates consumed to tier-up (after first) => Tier I + 2 duplicates -> Tier II; needs +2 more -> Tier III
-  fireRatePenaltyPerTier: 0.90, // multiply base fireRate each tier (lower = faster)
+  hexRadius: 40,
+  rows: 5,
+  playerColumns: 3,
+  enemyColumns: 3,
+  boardOffsetX: 100,
+  boardOffsetY: 90,
+  advanceHexDelay: 550,
+  projectileSpeed: 480,
+  fireRateTierMult: 0.90,
   hpTierMult: 1.55,
   dmgTierMult: 1.35,
+  fusionDuplicates: 2,
   damageFlash: 120,
-  reloadRadius: 30,
-  shipWidth: 90,
-  shipHeight: 34,
-  dragSnapXSpacing: 74,     // horizontal snap grid spacing between columns for player side
-  dragColumns: 5,            // # columns allowed for player positions
-  playerMinX: 100,
-  enemyMinX: 930,
-  columnSpacing: 74,
+  maxTier: 3,
+  advanceStopGap: 2,
+  RANGE_PIXEL_SCALE: 0.95
 };
 
-/***************** DATA *****************/
+/* ========== SHIP DEFINITIONS ========== */
 const PLAYER_SHIP_DEFS = [
-  { id:'rammer',  name:'Rammer',  lane:0, hp:320, dmg:26, fireRate:1150, color:'#3fa9f5' },
-  { id:'archer',  name:'Archer',  lane:2, hp:220, dmg:34, fireRate:1400, color:'#8fd7ff' },
-  { id:'support', name:'Support', lane:4, hp:250, dmg:18, fireRate:900,  color:'#4cd2b8' }
+  { id:'rammer',  name:'Rammer',  r:0, hp:340, dmg:26, fireRate:1150, rangeHex:3, color:'#3fa9f5' },
+  { id:'archer',  name:'Archer',  r:2, hp:220, dmg:34, fireRate:1400, rangeHex:6, color:'#8fd7ff' },
+  { id:'support', name:'Support', r:4, hp:260, dmg:18, fireRate:900,  rangeHex:4, color:'#4cd2b8' },
 ];
 const ENEMY_SHIP_DEFS = [
-  { id:'raider',  name:'Raider',  lane:0, hp:260, dmg:22, fireRate:1300, color:'#e25d5d' },
-  { id:'corsair', name:'Corsair', lane:2, hp:230, dmg:28, fireRate:1500, color:'#f07f5a' },
-  { id:'bomber',  name:'Bomber',  lane:4, hp:285, dmg:20, fireRate:1000, color:'#ffb347' }
+  { id:'raider',  name:'Raider',  r:0, hp:270, dmg:22, fireRate:1300, rangeHex:3, color:'#e25d5d' },
+  { id:'corsair', name:'Corsair', r:2, hp:230, dmg:28, fireRate:1500, rangeHex:4, color:'#f07f5a' },
+  { id:'bomber',  name:'Bomber',  r:4, hp:300, dmg:20, fireRate:1000, rangeHex:5, color:'#ffb347' },
 ];
 
-// Card definitions: type influences effect application.
-// blueprint-random duplicates grant potential fusion; mod-fire-rate; mod-damage; mod-repair; mod-hp;
+/* ========== CARD LIBRARY ========== */
 const CARD_LIBRARY = [
-  { id:'bp_rammer',  type:'blueprint', hullId:'rammer',  name:'Blueprint: Rammer', text:'+1 Rammer duplicate (collect to Fuse)', rarity:'common' },
-  { id:'bp_archer',  type:'blueprint', hullId:'archer',  name:'Blueprint: Archer', text:'+1 Archer duplicate', rarity:'common' },
+  { id:'bp_rammer',  type:'blueprint', hullId:'rammer',  name:'Blueprint: Rammer',  text:'+1 Rammer duplicate', rarity:'common' },
+  { id:'bp_archer',  type:'blueprint', hullId:'archer',  name:'Blueprint: Archer',  text:'+1 Archer duplicate', rarity:'common' },
   { id:'bp_support', type:'blueprint', hullId:'support', name:'Blueprint: Support', text:'+1 Support duplicate', rarity:'common' },
-  { id:'up_firerate', type:'mod', mod:{ fireRateMult:0.92 }, name:'Gunner Drill', text:'Fire Rate +8% (mult)', rarity:'common' },
+  { id:'up_firerate', type:'mod', mod:{ fireRateMult:0.92 }, name:'Gunner Drill', text:'Fire Rate +8%', rarity:'common' },
   { id:'up_damage',   type:'mod', mod:{ dmgMult:1.10 }, name:'Hot Shot', text:'+10% Damage', rarity:'rare' },
   { id:'up_hull',     type:'mod', mod:{ hpMult:1.15 }, name:'Reinforce Hull', text:'+15% Max HP', rarity:'common' },
-  { id:'up_repair',   type:'instant', effect:'repair15', name:'Field Repair', text:'Restore 15% HP now', rarity:'common' },
-  { id:'up_overload', type:'mod', mod:{ dmgMult:1.20, fireRateMult:0.95 }, name:'Overload Cannons', text:'+20% Dmg, +5% fire rate', rarity:'epic' }
+  { id:'up_repair',   type:'instant', effect:'repair15', name:'Field Repair', text:'Restore 15% HP', rarity:'common' },
+  { id:'up_overload', type:'mod', mod:{ dmgMult:1.20, fireRateMult:0.95 }, name:'Overload', text:'+20% Dmg & +5% Fire Rate', rarity:'epic' }
 ];
 
-/***************** STATE *****************/
+/* ========== STATE ========== */
 const state = {
-  phase:'idle',
+  phase:'planning',
   ships:[],
   projectiles:[],
-  cards:[],            // deck/tray (simple pool for now)
-  heldCard:null,       // current dragging card object
-  dragOffset:{x:0,y:0},
-  shipBlueprintCounts:{}, // counts per hullId
-  lastTime:0,
+  cards:[],
+  blueprintCounts:{rammer:0,archer:0,support:0},
   startTime:0,
+  lastTime:0,
   elapsed:0,
+  draggingShip:null,
+  advanceTimers:new Map()
 };
 
-/***************** SETUP *****************/
+let uidCounter=1;
+const qMax=16;
+const enemyStartBase=qMax-3;
+
+/* ========== AXIAL HELPERS ========== */
+function axialToPixel(q,r){
+  const size=CONFIG.hexRadius;
+  const x = size * Math.sqrt(3) * (q + r/2) + CONFIG.boardOffsetX;
+  const y = size * 1.5 * r + CONFIG.boardOffsetY;
+  return {x,y};
+}
+function hexDistanceQR(a,b){
+  const ax=a.q, az=a.r, ay=-ax-az;
+  const bx=b.q, bz=b.r, by=-bx-bz;
+  return Math.max(Math.abs(ax-bx), Math.abs(ay-by), Math.abs(az-bz));
+}
+
+/* ========== SHIP CREATION & STATS ========== */
+function makeShip(def, side, idx){
+  const startQ = side==='player'
+      ? Math.min(idx, CONFIG.playerColumns-1)
+      : enemyStartBase + Math.min(idx, CONFIG.enemyColumns-1);
+  const p=axialToPixel(startQ, def.r);
+  return {
+    uid:(side==='player'?'P':'E')+(uidCounter++),
+    side,
+    id:def.id,
+    name:def.name,
+    q:startQ, r:def.r,
+    x:p.x, y:p.y, targetX:p.x, targetY:p.y,
+    baseHP:def.hp, baseDmg:def.dmg, baseFireRate:def.fireRate,
+    rangeHex:def.rangeHex,
+    tier:1,
+    dmgMod:1, fireRateMod:1, hpMod:1,
+    mods:[],
+    hp:def.hp,
+    fireTimer:0, flashT:0,
+    alive:true
+  };
+}
+function effectiveMaxHP(s){ return Math.round(s.baseHP * s.hpMod * Math.pow(CONFIG.hpTierMult, s.tier-1)); }
+function effectiveDamage(s){ return Math.round(s.baseDmg * s.dmgMod * Math.pow(CONFIG.dmgTierMult, s.tier-1)); }
+function fireCooldown(s){ return s.baseFireRate * s.fireRateMod * Math.pow(CONFIG.fireRateTierMult, s.tier-1); }
+
+/* ========== SETUP ========== */
 function setup(){
-  state.phase='idle';
-  state.ships = [];
+  state.phase='planning';
+  state.ships=[];
+  state.projectiles=[];
   uidCounter=1;
-  PLAYER_SHIP_DEFS.forEach(d=> state.ships.push(makeShip(d,'player')));
-  ENEMY_SHIP_DEFS.forEach(d=> state.ships.push(makeShip(d,'enemy')));
-  state.projectiles = [];
-  state.cards = generateInitialCards();
-  state.shipBlueprintCounts = { rammer:0, archer:0, support:0 };
-  state.heldCard=null; state.elapsed=0; updateStatus('Arrange & upgrade.');
+  state.elapsed=0;
+  state.advanceTimers.clear();
+  PLAYER_SHIP_DEFS.forEach((d,i)=> state.ships.push(makeShip(d,'player',i)));
+  ENEMY_SHIP_DEFS.forEach((d,i)=> state.ships.push(makeShip(d,'enemy',i)));
+  state.cards = drawInitialCards();
+  state.blueprintCounts={rammer:0,archer:0,support:0};
+  updateStatus('Arrange & upgrade.');
   renderCardTray();
   updateShipStatsPanel();
   draw();
 }
-
-function generateInitialCards(){
-  // Provide some initial random cards (8) including a few blueprints.
-  const picks=[];
-  const pool = [...CARD_LIBRARY];
-  for (let i=0;i<8;i++) picks.push(pool[Math.floor(Math.random()*pool.length)]);
-  return picks.map(c=> ({...c, instanceId: c.id + '_' + Math.random().toString(36).slice(2)}));
+function drawInitialCards(){
+  const arr=[];
+  for(let i=0;i<8;i++){
+    const base=CARD_LIBRARY[Math.floor(Math.random()*CARD_LIBRARY.length)];
+    arr.push({...base, instanceId:'c_'+Math.random().toString(36).slice(2)});
+  }
+  return arr;
 }
 
-/***************** SHIP / COMBAT LOGIC *****************/
-let uidCounter=1;
-function makeShip(def, side){
-  return {
-    uid: (side==='player'? 'P':'E')+(uidCounter++),
-    side,
-    id:def.id,
-    name:def.name,
-    baseHP:def.hp,
-    baseDmg:def.dmg,
-    baseFireRate:def.fireRate,
-    color:def.color,
-    lane:def.lane,
-    tier:1,
-    hp:def.hp,
-    dmgMod:1,
-    fireRateMod:1,
-    hpMod:1,
-    mods:[],  // textual tags of applied mods
-    fireTimer:0,
-    flashT:0,
-    alive:true,
-    x: side==='player'? computePlayerX(2) : CONFIG.enemyX, // default col 2 center
-    y: laneToY(def.lane),
-    dragging:false
-  };
-}
-function computePlayerX(col){
-  return CONFIG.playerMinX + col * CONFIG.columnSpacing;
-}
-function laneToY(lane){
-  const top = CONFIG.lanePaddingY;
-  const usable = CONFIG.height - CONFIG.lanePaddingY*2;
-  const spacing = usable / (CONFIG.lanes-1);
-  return top + lane*spacing;
-}
-
-function fireCooldown(ship){
-  return ship.baseFireRate * ship.fireRateMod * Math.pow(CONFIG.fireRatePenaltyPerTier, ship.tier-1);
-}
-function effectiveDamage(ship){
-  return Math.round(ship.baseDmg * ship.dmgMod * Math.pow(CONFIG.dmgTierMult, ship.tier-1));
-}
-function effectiveMaxHP(ship){
-  return Math.round(ship.baseHP * ship.hpMod * Math.pow(CONFIG.hpTierMult, ship.tier-1));
-}
-
+/* ========== TARGETING & RANGE ========== */
 function nearestEnemy(ship){
-  let best=null, bestDist=Infinity;
-  for (const o of state.ships){
-    if (!o.alive || o.side===ship.side) continue;
-    const dx = o.x - ship.x; const dy=o.y - ship.y; const dist = Math.hypot(dx,dy) + (o.lane===ship.lane? -20:0);
-    if (dist < bestDist){ bestDist=dist; best=o; }
+  let best=null, bestD=Infinity;
+  for(const o of state.ships){
+    if(!o.alive||o.side===ship.side) continue;
+    const d = hexDistanceQR(ship,o);
+    if(d<bestD){ bestD=d; best=o; }
   }
   return best;
 }
-
-function makeProjectile(from, target){
-  const ang = Math.atan2(target.y - from.y, target.x - from.x);
-  return { x:from.x, y:from.y, vx:Math.cos(ang)*CONFIG.projectileSpeed, vy:Math.sin(ang)*CONFIG.projectileSpeed, r:4, from:from.uid, target:target.uid, color: from.side==='player'? '#a9f3ff':'#ff9f84', alive:true };
+function inHexRange(ship,target){
+  return target && hexDistanceQR(ship,target) <= ship.rangeHex;
 }
 
-function updateBattle(dt){
-  for (const s of state.ships){
-    if (!s.alive || s.side==='enemy') continue; // player fire cycle first (order not critical here)
+/* ========== ADVANCE LOGIC ========== */
+function attemptAdvance(ship, dt){
+  const key=ship.uid;
+  const acc = (state.advanceTimers.get(key)||0)+dt;
+  if(acc < CONFIG.advanceHexDelay){
+    state.advanceTimers.set(key,acc);
+    return;
   }
-  // Update timers & fire
-  for (const s of state.ships){
-    if (!s.alive) continue;
+  state.advanceTimers.set(key,0);
+  const opponents = state.ships.filter(s=> s.alive && s.side!==ship.side);
+  let nearestGap=Infinity;
+  for(const o of opponents){
+    const gap=Math.abs(o.q - ship.q);
+    if(gap<nearestGap) nearestGap=gap;
+  }
+  if(nearestGap <= CONFIG.advanceStopGap) return;
+  const dir = ship.side==='player'? 1 : -1;
+  const nextQ = ship.q + dir;
+  if(nextQ<0 || nextQ>qMax) return;
+  ship.q=nextQ;
+  const p=axialToPixel(ship.q,ship.r);
+  ship.targetX=p.x; ship.targetY=p.y;
+}
+
+/* ========== PROJECTILES ========== */
+function makeProjectile(from,to){
+  const ang=Math.atan2(to.y-from.y,to.x-from.x);
+  return {
+    x:from.x, y:from.y,
+    vx:Math.cos(ang)*CONFIG.projectileSpeed,
+    vy:Math.sin(ang)*CONFIG.projectileSpeed,
+    r:4,
+    from:from.uid,
+    target:to.uid,
+    color: from.side==='player'? '#a9f3ff':'#ff9f84',
+    alive:true
+  };
+}
+
+/* ========== BATTLE LOOP ========== */
+let raf=null;
+function startBattle(){
+  if(state.phase!=='planning') return;
+  state.phase='battle';
+  state.startTime=performance.now();
+  state.lastTime=state.startTime;
+  updateStatus('Battle running...');
+  raf=requestAnimationFrame(loop);
+}
+function loop(t){
+  if(state.phase!=='battle') return;
+  const dt=t-state.lastTime;
+  state.lastTime=t;
+  state.elapsed=t-state.startTime;
+  updateTimer();
+  updateBattle(dt);
+  draw();
+  raf=requestAnimationFrame(loop);
+}
+function updateBattle(dt){
+  // Position easing
+  for(const s of state.ships){
+    if(!s.alive) continue;
+    s.x += (s.targetX - s.x)*Math.min(1, dt/180);
+    s.y += (s.targetY - s.y)*Math.min(1, dt/180);
+  }
+  // Firing / advancing
+  for(const s of state.ships){
+    if(!s.alive) { state.advanceTimers.delete(s.uid); continue; }
+    const target=nearestEnemy(s);
+    const hasRange=inHexRange(s,target);
     s.fireTimer += dt;
-    s.flashT = Math.max(0, s.flashT - dt);
-    const cd = fireCooldown(s);
-    if (state.phase==='running' && s.fireTimer >= cd){
-      const target = nearestEnemy(s);
-      if (target){
-        s.fireTimer = 0;
-        state.projectiles.push(makeProjectile(s,target));
-      }
+    s.flashT=Math.max(0,s.flashT-dt);
+    if(!hasRange) attemptAdvance(s,dt);
+    if(hasRange && s.fireTimer >= fireCooldown(s)){
+      s.fireTimer=0;
+      if(target) state.projectiles.push(makeProjectile(s,target));
     }
   }
   // Projectiles
-  for (const p of state.projectiles){
-    if (!p.alive) continue;
-    p.x += p.vx * dt/1000; p.y += p.vy * dt/1000;
-    const target = state.ships.find(s=> s.uid===p.target && s.alive);
-    if (!target){ p.alive=false; continue; }
-    const dx = target.x - p.x; const dy = target.y - p.y; if (Math.hypot(dx,dy) < 12){
-      const shooter = state.ships.find(s=> s.uid===p.from);
-      const dmg = shooter? effectiveDamage(shooter):25;
-      dealDamage(target,dmg);
+  for(const p of state.projectiles){
+    if(!p.alive) continue;
+    p.x+=p.vx*dt/1000;
+    p.y+=p.vy*dt/1000;
+    const target=state.ships.find(s=> s.uid===p.target && s.alive);
+    if(!target){ p.alive=false; continue;}
+    if(Math.hypot(target.x-p.x,target.y-p.y)<12){
+      const shooter=state.ships.find(s=> s.uid===p.from);
+      const dmg=shooter? effectiveDamage(shooter):20;
+      applyDamage(target,dmg);
       p.alive=false;
     }
   }
-  state.projectiles = state.projectiles.filter(p=>p.alive);
-  // Win/Lose
-  const playerAlive = state.ships.some(s=> s.side==='player' && s.alive);
-  const enemyAlive = state.ships.some(s=> s.side==='enemy' && s.alive);
-  if (!enemyAlive) endBattle(true); else if (!playerAlive) endBattle(false);
+  state.projectiles=state.projectiles.filter(p=>p.alive);
+
+  const playerAlive=state.ships.some(s=> s.alive && s.side==='player');
+  const enemyAlive=state.ships.some(s=> s.alive && s.side==='enemy');
+  if(!enemyAlive) endBattle(true);
+  else if(!playerAlive) endBattle(false);
 }
-function dealDamage(ship, amt){
-  ship.hp -= amt; ship.flashT = CONFIG.damageFlash;
-  if (ship.hp <= 0){ ship.alive=false; ship.hp=0; }
+function applyDamage(ship,amt){
+  ship.hp -= amt;
+  ship.flashT=CONFIG.damageFlash;
+  if(ship.hp<=0){ ship.hp=0; ship.alive=false; }
   updateShipStatsPanel();
+}
+function endBattle(v){
+  state.phase='ended';
+  cancelAnimationFrame(raf);
+  updateStatus(v?'Victory!':'Defeat');
+  showOverlay(v);
+  document.getElementById('btnReset').disabled=false;
 }
 
-/***************** FUSION / DUPLICATE HANDLING *****************/
+/* ========== FUSION / BLUEPRINTS / MODS ========== */
 function addBlueprint(hullId){
-  state.shipBlueprintCounts[hullId] = (state.shipBlueprintCounts[hullId] || 0) + 1;
-  checkFusion(hullId);
+  state.blueprintCounts[hullId]=(state.blueprintCounts[hullId]||0)+1;
+  tryFusion(hullId);
   updateShipStatsPanel();
 }
-function checkFusion(hullId){
-  const ship = state.ships.find(s=> s.side==='player' && s.id===hullId);
-  if (!ship) return;
-  const needed = CONFIG.cardFusionThreshold;
-  // For each tier beyond 1, we consume 'needed' duplicates.
-  while (ship.tier < 3 && state.shipBlueprintCounts[hullId] >= needed){
-    state.shipBlueprintCounts[hullId] -= needed;
+function tryFusion(hullId){
+  const ship=state.ships.find(s=> s.side==='player' && s.id===hullId);
+  if(!ship) return;
+  while(ship.tier<CONFIG.maxTier && state.blueprintCounts[hullId] >= CONFIG.fusionDuplicates){
+    state.blueprintCounts[hullId]-=CONFIG.fusionDuplicates;
     ship.tier++;
-    // Heal to new max
-    ship.hp = effectiveMaxHP(ship);
+    const newMax=effectiveMaxHP(ship);
+    ship.hp=newMax; // full heal on fusion
     pulseShipCard(ship.uid);
     updateStatus(`${ship.name} fused to Tier ${ship.tier}!`);
   }
 }
 function pulseShipCard(uid){
-  const el = document.querySelector(`.shipStatsCard[data-uid='${uid}']`);
-  if (el){ el.classList.add('upgradePulse'); setTimeout(()=> el.classList.remove('upgradePulse'), 1100); }
-}
-
-/***************** APPLY CARD EFFECT *****************/
-function applyCardToShip(card, ship){
-  if (!ship || !ship.alive) return;
-  if (card.type==='blueprint'){
-    addBlueprint(card.hullId);
-  } else if (card.type==='mod'){
-    if (card.mod.fireRateMult){ ship.fireRateMod *= card.mod.fireRateMult; ship.mods.push('FR'); }
-    if (card.mod.dmgMult){ ship.dmgMod *= card.mod.dmgMult; ship.mods.push('DMG'); }
-    if (card.mod.hpMult){
-      const prevMax = effectiveMaxHP(ship);
-      ship.hpMod *= card.mod.hpMult; ship.mods.push('HP');
-      const newMax = effectiveMaxHP(ship);
-      // Increase current HP proportionally
-      ship.hp += (newMax - prevMax);
-    }
-    updateStatus(`${card.name} applied to ${ship.name}`);
-  } else if (card.type==='instant'){
-    if (card.effect==='repair15'){
-      const max = effectiveMaxHP(ship);
-      ship.hp = Math.min(max, ship.hp + Math.round(max*0.15));
-      updateStatus(`${ship.name} repaired`);
-    }
+  const el=document.querySelector(`.shipStatsCard[data-uid='${uid}']`);
+  if(el){
+    el.classList.add('upgradePulse');
+    setTimeout(()=> el.classList.remove('upgradePulse'),1100);
   }
-  removeCardInstance(card.instanceId);
-  updateShipStatsPanel();
-}
-function removeCardInstance(instanceId){
-  state.cards = state.cards.filter(c=> c.instanceId!==instanceId);
-  renderCardTray();
 }
 
-/***************** DRAG & DROP (Cards) *****************/
-let dragCardEl=null; let dragCardData=null;
+/* ========== CARDS (Drag & Drop) ========== */
+let dragCardEl=null, dragCardData=null;
 function renderCardTray(){
-  const tray = document.getElementById('cardTray');
+  const tray=document.getElementById('cardTray');
   tray.innerHTML='';
-  state.cards.forEach(card => {
-    const el = document.createElement('div');
-    el.className = `card rarity-${card.rarity}`;
-    el.draggable = true;
-    el.dataset.instanceId = card.instanceId;
-    el.innerHTML = `<h4>${card.name}</h4><small>${card.text}</small>`;
-    el.addEventListener('dragstart', e=> onCardDragStart(e, card));
-    el.addEventListener('dragend', onCardDragEnd);
+  state.cards.forEach(c=>{
+    const el=document.createElement('div');
+    el.className=`card rarity-${c.rarity}`;
+    el.draggable=true;
+    el.dataset.instanceId=c.instanceId;
+    el.innerHTML=`<h4>${c.name}</h4><small>${c.text}</small>`;
+    el.addEventListener('dragstart',e=>onCardDragStart(e,c));
+    el.addEventListener('dragend',onCardDragEnd);
     tray.appendChild(el);
   });
 }
-function onCardDragStart(e, card){
-  dragCardEl = e.currentTarget; dragCardData = card; dragCardEl.classList.add('dragging');
+function onCardDragStart(e,card){
+  dragCardEl=e.currentTarget;
+  dragCardData=card;
+  dragCardEl.classList.add('dragging');
   e.dataTransfer.effectAllowed='copy';
 }
-function onCardDragEnd(){ if (dragCardEl) dragCardEl.classList.remove('dragging'); dragCardEl=null; dragCardData=null; }
-
-// Allow drop on ship stat cards and canvas ship hitboxes
+function onCardDragEnd(){
+  if(dragCardEl) dragCardEl.classList.remove('dragging');
+  dragCardEl=null; dragCardData=null;
+}
+function removeCardInstance(id){
+  state.cards = state.cards.filter(c=> c.instanceId!==id);
+  renderCardTray();
+}
 function setupShipDropZones(){
-  document.getElementById('shipStatsPanel').addEventListener('dragover', e=>{
-    if (!dragCardData) return; const target = e.target.closest('.shipStatsCard'); if (!target) return;
-    e.preventDefault(); target.classList.add('drag-card-hover');
+  const panel=document.getElementById('shipStatsPanel');
+  panel.addEventListener('dragover',e=>{
+    if(!dragCardData) return;
+    const cardEl=e.target.closest('.shipStatsCard');
+    if(!cardEl) return;
+    e.preventDefault();
+    cardEl.classList.add('drag-card-hover');
   });
-  document.getElementById('shipStatsPanel').addEventListener('dragleave', e=>{
-    const target = e.target.closest('.shipStatsCard'); if (target) target.classList.remove('drag-card-hover');
+  panel.addEventListener('dragleave',e=>{
+    const cardEl=e.target.closest('.shipStatsCard');
+    if(cardEl) cardEl.classList.remove('drag-card-hover');
   });
-  document.getElementById('shipStatsPanel').addEventListener('drop', e=>{
-    const target = e.target.closest('.shipStatsCard'); if (!target || !dragCardData) return;
-    e.preventDefault(); target.classList.remove('drag-card-hover');
-    const uid = target.dataset.uid; const ship = state.ships.find(s=> s.uid===uid);
-    applyCardToShip(dragCardData, ship); onCardDragEnd();
+  panel.addEventListener('drop',e=>{
+    const cardEl=e.target.closest('.shipStatsCard');
+    if(!cardEl||!dragCardData) return;
+    e.preventDefault();
+    cardEl.classList.remove('drag-card-hover');
+    const ship=state.ships.find(s=> s.uid===cardEl.dataset.uid);
+    attemptApplyCard(dragCardData, ship);
   });
 }
+const canvas=document.getElementById('battleCanvas');
+canvas.addEventListener('dragover', e=>{
+  if(!dragCardData) return;
+  const ship = pickPlayerShipAt(e.offsetX,e.offsetY);
+  if(ship) e.preventDefault();
+});
+canvas.addEventListener('drop', e=>{
+  if(!dragCardData) return;
+  const ship=pickPlayerShipAt(e.offsetX,e.offsetY);
+  if(ship){
+    e.preventDefault();
+    attemptApplyCard(dragCardData, ship);
+  }
+});
+function attemptApplyCard(card, ship){
+  if(!ship || ship.side!=='player' || !ship.alive){
+    rejectCard(card);
+    return;
+  }
+  if(card.type==='blueprint'){
+    if(card.hullId!==ship.id){
+      rejectCard(card,true);
+      updateStatus('Blueprint mismatch.');
+      return;
+    }
+    addBlueprint(card.hullId);
+    removeCardInstance(card.instanceId);
+    updateStatus('Blueprint applied.');
+  } else if(card.type==='mod'){
+    if(card.mod.fireRateMult){ ship.fireRateMod*=card.mod.fireRateMult; ship.mods.push('FR'); }
+    if(card.mod.dmgMult){ ship.dmgMod*=card.mod.dmgMult; ship.mods.push('DMG'); }
+    if(card.mod.hpMult){
+      const prev=effectiveMaxHP(ship);
+      ship.hpMod*=card.mod.hpMult;
+      ship.mods.push('HP');
+      const next=effectiveMaxHP(ship);
+      ship.hp += (next-prev); // proportionally add gained max HP
+    }
+    removeCardInstance(card.instanceId);
+    updateStatus(`${card.name} → ${ship.name}`);
+  } else if(card.type==='instant'){
+    if(card.effect==='repair15'){
+      const max=effectiveMaxHP(ship);
+      ship.hp=Math.min(max, ship.hp + Math.round(max*0.15));
+      updateStatus(`${ship.name} repaired`);
+    }
+    removeCardInstance(card.instanceId);
+  }
+  updateShipStatsPanel();
+  onCardDragEnd();
+}
+function rejectCard(card, animate){
+  if(animate && dragCardEl){
+    dragCardEl.classList.add('reject');
+    setTimeout(()=> dragCardEl && dragCardEl.classList.remove('reject'),450);
+  }
+  onCardDragEnd();
+}
 
-/***************** DRAG SHIPS (REPOSITION) *****************/
-let draggingShip=null; let dragShipOffset={x:0,y:0};
-function enableCanvasDrag(){
-  battleCanvas.addEventListener('mousedown', e=>{
-    if (state.phase!=='idle') return; // only before battle
-    const ship = pickPlayerShipAt(e.offsetX, e.offsetY);
-    if (ship){ draggingShip = ship; ship.dragging=true; dragShipOffset.x = e.offsetX - ship.x; dragShipOffset.y = e.offsetY - ship.y; }
+/* ========== DRAG SHIPS (Planning) ========== */
+function enableShipDragging(){
+  canvas.addEventListener('mousedown', e=>{
+    if(state.phase!=='planning') return;
+    const ship=pickPlayerShipAt(e.offsetX,e.offsetY);
+    if(ship){
+      state.draggingShip=ship;
+      canvas.style.cursor='grabbing';
+    }
   });
   window.addEventListener('mousemove', e=>{
-    if (!draggingShip) return; const rect = battleCanvas.getBoundingClientRect();
-    let x = e.clientX - rect.left - dragShipOffset.x; let y = e.clientY - rect.top - dragShipOffset.y;
-    // Snap y to nearest lane center
-    const lane = Math.round((y - CONFIG.lanePaddingY) / ((CONFIG.height - CONFIG.lanePaddingY*2)/(CONFIG.lanes-1)));
-    draggingShip.lane = clamp(lane,0,CONFIG.lanes-1);
-    draggingShip.y = laneToY(draggingShip.lane);
-    // Snap x to nearest player column
-    const relX = clamp(x, CONFIG.playerMinX - CONFIG.columnSpacing, CONFIG.playerMinX + (CONFIG.dragColumns-1)*CONFIG.columnSpacing + CONFIG.columnSpacing/2);
-    const col = Math.round((relX - CONFIG.playerMinX)/CONFIG.columnSpacing);
-    draggingShip.x = computePlayerX(clamp(col,0,CONFIG.dragColumns-1));
+    if(!state.draggingShip) return;
+    const rect=canvas.getBoundingClientRect();
+    const x=e.clientX-rect.left;
+    const y=e.clientY-rect.top;
+    let best=null,bestDist=Infinity;
+    for(let q=0;q<CONFIG.playerColumns;q++){
+      for(let r=0;r<CONFIG.rows;r++){
+        const p=axialToPixel(q,r);
+        const d=Math.hypot(p.x-x,p.y-y);
+        if(d<bestDist){bestDist=d;best={q,r,p};}
+      }
+    }
+    if(best){
+      state.draggingShip.q=best.q;
+      state.draggingShip.r=best.r;
+      state.draggingShip.targetX=best.p.x;
+      state.draggingShip.targetY=best.p.y;
+    }
     draw();
   });
-  window.addEventListener('mouseup', ()=>{ if (draggingShip){ draggingShip.dragging=false; draggingShip=null; } });
-}
-function pickPlayerShipAt(x,y){
-  return state.ships.find(s=> s.side==='player' && s.alive && Math.abs(x - s.x) < CONFIG.shipWidth/2 && Math.abs(y - s.y) < CONFIG.shipHeight/2);
-}
-
-/***************** SHIP STATS PANEL *****************/
-function updateShipStatsPanel(){
-  const panel = document.getElementById('shipStatsPanel');
-  panel.innerHTML='';
-  state.ships.filter(s=> s.side==='player').forEach(s=> {
-    const maxHP = effectiveMaxHP(s);
-    const card = document.createElement('div');
-    card.className='shipStatsCard'; card.dataset.uid=s.uid; card.innerHTML=`
-      <div class="title">${s.name}</div>
-      <div class="tier">Tier ${s.tier} ${s.mods.length? '• Mods: '+s.mods.join(', '):''}</div>
-      HP: ${s.hp}/${maxHP}<br>
-      DMG: ${effectiveDamage(s)}<br>
-      Fire CD: ${Math.round(fireCooldown(s))}ms<br>
-      Blueprints: ${state.shipBlueprintCounts[s.id]||0}
-    `;
-    panel.appendChild(card);
+  window.addEventListener('mouseup', ()=>{
+    state.draggingShip=null;
+    canvas.style.cursor='grab';
   });
 }
+function pickPlayerShipAt(x,y){
+  return state.ships.find(s=> s.side==='player' && s.alive && Math.hypot(s.x-x,s.y-y) < CONFIG.hexRadius*0.8);
+}
 
-/***************** BATTLE LOOP *****************/
-let rafId=null; const battleCanvas=document.getElementById('battleCanvas'); const ctx=battleCanvas.getContext('2d');
-function startBattle(){
-  if (state.phase!=='idle') return;
-  state.phase='running';
-  state.startTime = performance.now(); state.lastTime = state.startTime; updateStatus('Battle running...');
-  rafId = requestAnimationFrame(loop);
+/* ========== PANELS / STATUS ========== */
+function updateShipStatsPanel(){
+  const panel=document.getElementById('shipStatsPanel');
+  panel.innerHTML='';
+  state.ships.filter(s=> s.side==='player').forEach(s=>{
+    const max=effectiveMaxHP(s);
+    const div=document.createElement('div');
+    div.className='shipStatsCard';
+    div.dataset.uid=s.uid;
+    div.innerHTML=
+      `<div class="title">${s.name}</div>`+
+      `<div class="tier">Tier ${s.tier}${s.mods.length? ' • '+s.mods.join(', '):''}</div>`+
+      `HP: ${s.hp}/${max}<br>`+
+      `DMG: ${effectiveDamage(s)}<br>`+
+      `Fire CD: ${Math.round(fireCooldown(s))}ms<br>`+
+      `Range: ${s.rangeHex} hex<br>`+
+      `Pos: q${s.q}, r${s.r}<br>`+
+      `Blueprints: ${state.blueprintCounts[s.id]||0}`;
+    panel.appendChild(div);
+  });
 }
-function loop(t){
-  if (state.phase!=='running') return;
-  const dt = t - state.lastTime; state.lastTime = t; state.elapsed = t - state.startTime; updateTimer();
-  updateBattle(dt); draw(); rafId = requestAnimationFrame(loop);
+function updateTimer(){
+  document.getElementById('timer').textContent=(state.elapsed/1000).toFixed(1)+'s';
 }
-function endBattle(victory){
-  state.phase='ended'; cancelAnimationFrame(rafId); updateStatus(victory? 'Victory!':'Defeat');
-  showOverlay(victory);
-  document.getElementById('btnReset').disabled=false;
+function updateStatus(msg){
+  document.getElementById('status').textContent=msg;
 }
-function updateTimer(){ document.getElementById('timer').textContent = (state.elapsed/1000).toFixed(1)+'s'; }
-function updateStatus(msg){ document.getElementById('status').textContent = msg; }
 
-/***************** RENDERING *****************/
+/* ========== RENDERING ========== */
+const ctx=canvas.getContext('2d');
 function draw(){
-  ctx.clearRect(0,0,CONFIG.width,CONFIG.height);
-  drawLaneGuides();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawHexBackground();
+  if(document.getElementById('rangeToggle').checked) drawRangeRings();
   drawProjectiles();
   drawShips();
 }
-function drawLaneGuides(){
-  ctx.save(); ctx.strokeStyle='#142b3c'; ctx.lineWidth=1; ctx.setLineDash([6,10]);
-  for (let l=0;l<CONFIG.lanes;l++){ const y=laneToY(l); ctx.beginPath(); ctx.moveTo(60,y); ctx.lineTo(CONFIG.width-60,y); ctx.stroke(); }
-  ctx.restore();
-}
-function drawShips(){
-  for (const s of state.ships){ drawShip(s); }
-}
-function drawShip(ship){
-  const {x,y} = ship; const w=CONFIG.shipWidth; const h=CONFIG.shipHeight; ctx.save(); ctx.translate(x,y);
-  ctx.globalAlpha = ship.alive?1:0.25;
-  const flashA = ship.flashT>0? ship.flashT/CONFIG.damageFlash : 0;
-  ctx.fillStyle = blend(ship.color,'#ffffff', flashA*0.85);
-  roundRect(-w/2,-h/2,w,h,8); ctx.fill(); ctx.strokeStyle='#0d2536'; ctx.lineWidth=2; ctx.stroke();
-  // name
-  ctx.fillStyle='#fff'; ctx.font='11px sans-serif'; ctx.textAlign='center'; ctx.fillText(ship.name,0,-h/2-8);
-  // HP bar
-  drawHPBar(ship);
-  // Reload circle
-  if (ship.alive && state.phase==='running'){
-    const cd = fireCooldown(ship); const frac = Math.min(1, ship.fireTimer / cd);
-    drawReload(frac, ship.side==='player');
-  } else if (ship.alive && state.phase==='idle') {
-    drawReload(1, ship.side==='player', 0.15); // show full (ready)
+function drawHexBackground(){
+  ctx.save();
+  ctx.strokeStyle='#143047';
+  ctx.lineWidth=1;
+  for(let q=0;q<=qMax;q++){
+    for(let r=0;r<CONFIG.rows;r++){
+      const p=axialToPixel(q,r);
+      if(p.x<40||p.x>canvas.width-40) continue;
+      drawHex(p.x,p.y,CONFIG.hexRadius);
+    }
   }
   ctx.restore();
 }
-function drawHPBar(ship){
-  const pct = ship.hp / effectiveMaxHP(ship); const w=74, h=6; ctx.save(); ctx.translate(0,22);
-  ctx.fillStyle='#1d3544'; ctx.fillRect(-w/2,-h/2,w,h);
-  ctx.fillStyle = pct>0.6? '#53c97d' : pct>0.3? '#f0c05a':'#e25d5d'; ctx.fillRect(-w/2,-h/2,w*pct,h);
-  ctx.strokeStyle='#0a1b27'; ctx.strokeRect(-w/2,-h/2,w,h); ctx.restore();
+function drawHex(cx,cy,r){
+  ctx.beginPath();
+  for(let i=0;i<6;i++){
+    const ang=(Math.PI/180)*(60*i -30);
+    const x=cx + r*Math.cos(ang);
+    const y=cy + r*Math.sin(ang);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  ctx.stroke();
 }
-function drawReload(frac, playerSide, alphaOverride){
-  const r=CONFIG.reloadRadius; ctx.save(); ctx.beginPath(); ctx.strokeStyle=playerSide?'#3fa9f5':'#ff8866'; ctx.lineWidth=3; ctx.globalAlpha = alphaOverride || 1; ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,0); ctx.fillStyle=playerSide?'rgba(63,169,245,0.3)':'rgba(255,136,102,0.3)'; ctx.arc(0,0,r,-Math.PI/2,-Math.PI/2 + Math.PI*2*frac); ctx.closePath(); ctx.fill(); ctx.restore();
+function drawRangeRings(){
+  ctx.save();
+  ctx.lineWidth=1;
+  state.ships.forEach(s=>{
+    if(!s.alive) return;
+    const px=axialToPixel(s.q,s.r);
+    const radiusPixels = s.rangeHex * CONFIG.hexRadius * CONFIG.RANGE_PIXEL_SCALE;
+    ctx.strokeStyle = s.side==='player'? 'rgba(63,169,245,0.18)':'rgba(255,136,102,0.14)';
+    ctx.beginPath();
+    ctx.arc(px.x,px.y,radiusPixels,0,Math.PI*2);
+    ctx.stroke();
+  });
+  ctx.restore();
 }
-function drawProjectiles(){ ctx.save(); for (const p of state.projectiles){ ctx.beginPath(); ctx.fillStyle=p.color; ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); } ctx.restore(); }
-function blend(a,b,t){ const A=hexToRgb(a), B=hexToRgb(b); const r=Math.round(A.r+(B.r-A.r)*t), g=Math.round(A.g+(B.g-A.g)*t), c=Math.round(A.b+(B.b-A.b)*t); return `rgb(${r},${g},${c})`; }
-function hexToRgb(h){ return { r:parseInt(h.slice(1,3),16), g:parseInt(h.slice(3,5),16), b:parseInt(h.slice(5,7),16) }; }
-function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath(); }
+function drawShips(){
+  state.ships.forEach(s=> drawShip(s));
+}
+function drawShip(s){
+  const rad=CONFIG.hexRadius*0.72;
+  ctx.save();
+  ctx.translate(s.x,s.y);
+  ctx.globalAlpha=s.alive?1:0.25;
+  const flashA=s.flashT>0? s.flashT/CONFIG.damageFlash:0;
+  ctx.beginPath();
+  for(let i=0;i<6;i++){
+    const ang=(Math.PI/180)*(60*i -30);
+    const x=rad*Math.cos(ang);
+    const y=rad*Math.sin(ang);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  ctx.fillStyle=blend(s.color,'#ffffff', flashA*0.85);
+  ctx.fill();
+  ctx.strokeStyle='#0d2536';
+  ctx.lineWidth=2;
+  ctx.stroke();
+  // Name
+  ctx.fillStyle='#fff';
+  ctx.font='11px sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText(s.name,0,-rad-8);
+  // HP Bar
+  const max=effectiveMaxHP(s);
+  const pct=s.hp/max;
+  const bw=rad*1.4, bh=6;
+  ctx.fillStyle='#1d3544';
+  ctx.fillRect(-bw/2,rad+4,bw,bh);
+  ctx.fillStyle=pct>0.6?'#53c97d':pct>0.3?'#f0c05a':'#e25d5d';
+  ctx.fillRect(-bw/2,rad+4,bw*pct,bh);
+  ctx.strokeStyle='#0a1b27';
+  ctx.strokeRect(-bw/2,rad+4,bw,bh);
+  // Reload / cooldown indicator
+  if(s.alive && state.phase==='battle'){
+    const cd=fireCooldown(s);
+    const frac=Math.min(1,s.fireTimer/cd);
+    drawReload(frac, s.side==='player', rad+10);
+  } else if(s.alive && state.phase==='planning'){
+    drawReload(1, s.side==='player', rad+10, 0.25);
+  }
+  ctx.restore();
+}
+function drawReload(frac, playerSide, outerR, alpha){
+  ctx.save();
+  ctx.globalAlpha = alpha || 1;
+  ctx.beginPath();
+  ctx.strokeStyle=playerSide?'#3fa9f5':'#ff8866';
+  ctx.lineWidth=3;
+  ctx.arc(0,0,outerR,0,Math.PI*2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0,0);
+  ctx.fillStyle=playerSide?'rgba(63,169,245,0.30)':'rgba(255,136,102,0.30)';
+  ctx.arc(0,0,outerR,-Math.PI/2,-Math.PI/2 + Math.PI*2*frac,false);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+function drawProjectiles(){
+  ctx.save();
+  state.projectiles.forEach(p=>{
+    ctx.beginPath();
+    ctx.fillStyle=p.color;
+    ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
 
-/***************** OVERLAY *****************/
-function showOverlay(v){ const ov=document.getElementById('overlay'); ov.style.display='flex'; document.getElementById('resultTitle').textContent=v?'Victory!':'Defeat'; document.getElementById('resultStats').textContent = 'Duration: '+(state.elapsed/1000).toFixed(1)+'s'; }
-function closeOverlay(){ document.getElementById('overlay').style.display='none'; }
+/* ========== COLOR HELPERS ========== */
+function blend(a,b,t){ const A=hexToRgb(a), B=hexToRgb(b); return `rgb(${lerp(A.r,B.r,t)},${lerp(A.g,B.g,t)},${lerp(A.b,B.b,t)})`; }
+function hexToRgb(h){ return { r:parseInt(h.slice(1,3),16), g:parseInt(h.slice(3,5),16), b:parseInt(h.slice(5,7),16)}; }
+function lerp(a,b,t){ return Math.round(a+(b-a)*t); }
 
-/***************** EVENTS *****************/
+/* ========== OVERLAY ========== */
+function showOverlay(v){
+  const ov=document.getElementById('overlay');
+  ov.style.display='flex';
+  document.getElementById('resultTitle').textContent=v?'Victory!':'Defeat';
+  document.getElementById('resultStats').textContent='Duration: '+(state.elapsed/1000).toFixed(1)+'s';
+}
+function closeOverlay(){
+  document.getElementById('overlay').style.display='none';
+}
+
+/* ========== EVENTS ========== */
 window.addEventListener('DOMContentLoaded', ()=>{
-  setup(); setupShipDropZones(); enableCanvasDrag();
+  setup();
+  setupShipDropZones();
+  enableShipDragging();
   document.getElementById('btnStart').addEventListener('click', startBattle);
-  document.getElementById('btnReset').addEventListener('click', ()=> { closeOverlay(); setup(); document.getElementById('btnReset').disabled=true; });
+  document.getElementById('btnReset').addEventListener('click', ()=>{
+    closeOverlay();
+    setup();
+    document.getElementById('btnReset').disabled=true;
+  });
   document.getElementById('btnCloseOverlay').addEventListener('click', ()=> closeOverlay());
+  document.getElementById('rangeToggle').addEventListener('change', draw);
 });
+
+/* ====== (Future idea): function refillHand() { } ====== */
 
 </script>
 </body>
