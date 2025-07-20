@@ -234,10 +234,48 @@ function triggerStartBattle(){ state.battleShips.forEach(s=>{ if(!s.alive) retur
 function processPeriodic(dt){ state.battleShips.forEach(s=>{ const a=s.ability; if(!s.alive||!a) return; if(a.id==='repairTick'){ a._acc=(a._acc||0)+dt; if(a._acc>=a.period){ a._acc=0; const ally=lowestHpAlly(s.side); if(ally){ ally.hp=Math.min(effectiveMaxHP(ally), ally.hp+a.value); } } } }); }
 function lowestHpAlly(side){ let best=null,ratio=Infinity; state.battleShips.forEach(s=>{ if(!s.alive||s.side!==side) return; const r=s.hp/effectiveMaxHP(s); if(r<ratio){ ratio=r; best=s; } }); return best; }
 
+  // === Occupancy Helpers (prevent overlapping hex positions) ===
+function buildOccupancy() {
+  const occ = new Map();
+  state.battleShips.forEach(s => {
+    if(!s.alive) return;
+    const key = s.q + ',' + s.r;
+    if(!occ.has(key)) occ.set(key, []);
+    occ.get(key).push(s);
+  });
+  return occ;
+}
+function isOccupied(occ, q, r, excludeUid){
+  const key = q + ',' + r;
+  if(!occ.has(key)) return false;
+  return occ.get(key).some(s => s.uid !== excludeUid && s.alive);
+}
+function tryMoveToHex(ship, newQ, newR, occ){
+  if(isOccupied(occ, newQ, newR, ship.uid)) return false;
+  ship.q = newQ;
+  ship.r = newR;
+  const p = axialToPixel(ship.q, ship.r);
+  ship.targetX = p.x;
+  ship.targetY = p.y;
+  // register new occupancy immediately so later movers see it
+  const key = newQ + ',' + newR;
+  if(!occ.has(key)) occ.set(key, []);
+  occ.get(key).push(ship);
+  return true;
+}
+
+  
 /* Combat Helpers */
 function nearestEnemy(ship){ let best=null, bestD=Infinity; state.battleShips.forEach(o=>{ if(!o.alive||o.side===ship.side) return; const d=hexDistanceQR(ship,o); if(d<bestD){bestD=d;best=o;} }); return best; }
 function inHexRange(s,t){ return t && hexDistanceQR(s,t)<=s.rangeHex; }
-function advanceToward(s,t){ if(!t) return; const gap=Math.abs(t.q - s.q); if(gap<=CONFIG.advanceStopGap) return; const dir = t.q > s.q ? 1 : -1; s.q += dir; const p=axialToPixel(s.q,s.r); s.targetX=p.x; s.targetY=p.y; }
+function advanceToward(s,t,occ){
+  if(!t) return;
+  const gap = Math.abs(t.q - s.q);
+  if(gap <= CONFIG.advanceStopGap) return;
+  const dir = t.q > s.q ? 1 : -1;
+  const nextQ = s.q + dir;
+  tryMoveToHex(s, nextQ, s.r, occ); // silently fails if occupied
+}
 
 /* Projectiles */
 function makeProjectile(from,to,override){ const ang=Math.atan2(to.y-from.y,to.x-from.x); return {x:from.x,y:from.y,vx:Math.cos(ang)*CONFIG.projectileSpeed,vy:Math.sin(ang)*CONFIG.projectileSpeed,r:5,from:from.uid,target:to.uid,color:from.side==='player'?'#a9f3ff':'#ff9f84',alive:true,dmg:override||effectiveDamage(from),meta:{chainLeft: from.ability && from.ability.id==='chain'? from.ability.jumps:0, hit:new Set()}}; }
@@ -246,13 +284,131 @@ function makeProjectile(from,to,override){ const ang=Math.atan2(to.y-from.y,to.x
 let battleRaf=null;
 function loopBattle(t){ if(state.phase!=='battle') return; const dt=t-state.lastTime; state.lastTime=t; state.elapsed=t-state.startTime; updateTimer(); processPeriodic(dt); updateBattle(dt); drawBattle(); const playerAlive=state.battleShips.some(s=>s.alive&&s.side==='player'); const enemyAlive=state.battleShips.some(s=>s.alive&&s.side==='enemy'); if(!playerAlive || !enemyAlive){ finishBattle(playerAlive && !enemyAlive); return; } battleRaf=requestAnimationFrame(loopBattle); }
 
-function updateBattle(dt){ state.battleShips.forEach(s=>{ if(!s.alive) return; s.x+=(s.targetX-s.x)*Math.min(1,dt/180); s.y+=(s.targetY-s.y)*Math.min(1,dt/180); }); state.battleShips.forEach(s=>{ if(!s.alive) return; s.fireTimer+=dt; s.flashT=Math.max(0,s.flashT-dt); const target=nearestEnemy(s); const has=inHexRange(s,target); if(!has) advanceToward(s,target); if(has && s.fireTimer>=fireCooldown(s)){ s.fireTimer=0; if(target){ const p=makeProjectile(s,target); state.projectiles.push(p); onAttack(s,target,p); } } }); state.projectiles.forEach(p=>{ if(!p.alive) return; p.x+=p.vx*dt/1000; p.y+=p.vy*dt/1000; const targ=state.battleShips.find(s=>s.uid===p.target && s.alive); if(!targ){ p.alive=false; return; } if(Math.hypot(targ.x-p.x,targ.y-p.y)<12){ onHit(p,targ); p.alive=false; } }); state.projectiles=state.projectiles.filter(p=>p.alive); // DOTs
-  state.battleShips.forEach(s=>{ if(!s.alive) return; s.burns = s.burns.filter(b=>{ b.t-=dt; if(b.t<=0) return false; s.hp -= b.dps * dt/1000; return true; }); if(s.hp<=0) killShip(s); }); }
+function updateBattle(dt){
+  // (A) Smooth pixel easing toward target positions
+  state.battleShips.forEach(s=>{
+    if(!s.alive) return;
+    s.x += (s.targetX - s.x) * Math.min(1, dt/180);
+    s.y += (s.targetY - s.y) * Math.min(1, dt/180);
+  });
 
+  // (B) Build occupancy map BEFORE axial moves
+  const occ = buildOccupancy();
+
+  // (C) Movement + firing (collision-safe)
+  state.battleShips.forEach(s=>{
+    if(!s.alive) return;
+    s.fireTimer += dt;
+    s.flashT = Math.max(0, s.flashT - dt);
+
+    const target = nearestEnemy(s);
+    const hasRange = inHexRange(s, target);
+
+    if(!hasRange){
+      advanceToward(s, target, occ); // now uses tryMoveToHex
+    }
+
+    if(hasRange && s.fireTimer >= fireCooldown(s)){
+      s.fireTimer = 0;
+      if(target){
+        const p = makeProjectile(s, target);
+        state.projectiles.push(p);
+        onAttack(s, target, p);
+      }
+    }
+  });
+
+  // (D) Projectiles
+  state.projectiles.forEach(p=>{
+    if(!p.alive) return;
+    p.x += p.vx * dt/1000;
+    p.y += p.vy * dt/1000;
+    const targ = state.battleShips.find(s=> s.uid===p.target && s.alive);
+    if(!targ){ p.alive=false; return; }
+    if(Math.hypot(targ.x - p.x, targ.y - p.y) < 12){
+      onHit(p, targ);
+      p.alive = false;
+    }
+  });
+  state.projectiles = state.projectiles.filter(p=> p.alive);
+
+  // (E) DOT / burn ticks
+  state.battleShips.forEach(s=>{
+    if(!s.alive) return;
+    s.burns = s.burns.filter(b=>{
+      b.t -= dt;
+      if(b.t <= 0) return false;
+      s.hp -= b.dps * dt/1000;
+      return true;
+    });
+    if(s.hp <= 0) killShip(s);
+  });
+}
+
+  
 function onAttack(shooter,target,proj){ const a=shooter.ability; if(!a) return; }
 function onHit(projectile,target){ const shooter=state.battleShips.find(s=>s.uid===projectile.from); if(!shooter) return; applyAbilityOnHit(shooter,target,projectile); applyDamage(target,projectile.dmg,shooter); if(shooter.ability && shooter.ability.id==='pierceShot'){ const behind=findBehind(target,shooter,1.5); if(behind) applyDamage(behind,Math.round(projectile.dmg*shooter.ability.value),shooter); } if(shooter.ability && shooter.ability.id==='chain' && projectile.meta.chainLeft>0){ const next=findChainTarget(target,shooter,projectile.meta.hit); if(next){ projectile.meta.hit.add(target.uid); projectile.meta.chainLeft--; const cp=makeProjectile(target,next,Math.round(projectile.dmg*shooter.ability.value)); cp.meta.chainLeft=projectile.meta.chainLeft; cp.meta.hit=projectile.meta.hit; state.projectiles.push(cp); } } }
-function applyAbilityOnHit(shooter,target,proj){ const a=shooter.ability; if(!a) return; switch(a.id){ case 'burn': target.burns.push({t:a.duration,dps:a.value/(a.duration/1000)}); break; case 'execute': if(target.hp/effectiveMaxHP(target)<a.threshold) target.hp-=a.value; break; case 'slowBeam': target.slowMult=Math.min(target.slowMult,1-a.value); setTimeout(()=>{ if(target.alive) target.slowMult=1; },a.duration); break; case 'armorShred': target.armorShred=clamp((target.armorShred||0)+a.value,0,a.value*(a.stacks||5)); break; case 'pull': if(!a._used){ const dir=shooter.side==='player'? -1:1; target.q+=dir*a.value; const p=axialToPixel(target.q,target.r); target.targetX=p.x; target.targetY=p.y; a._used=true; } break; case 'shieldPulse': break; }
+function applyAbilityOnHit(shooter, target, proj){
+  const a = shooter.ability;
+  if(!a) return;
+
+  switch(a.id){
+
+    case 'burn':
+      target.burns.push({
+        t: a.duration,
+        dps: a.value / (a.duration/1000)
+      });
+      break;
+
+    case 'execute':
+      if (target.hp / effectiveMaxHP(target) < a.threshold) {
+        target.hp -= a.value;
+      }
+      break;
+
+    case 'slowBeam':
+      target.slowMult = Math.min(target.slowMult, 1 - a.value);
+      setTimeout(()=>{
+        if(target.alive) target.slowMult = 1;
+      }, a.duration);
+      break;
+
+    case 'armorShred':
+      target.armorShred = clamp(
+        (target.armorShred || 0) + a.value,
+        0,
+        a.value * (a.stacks || 5)
+      );
+      break;
+
+    case 'pull':
+      // UPDATED: stepwise, collision‑aware pull
+      if(!a._used){
+        const dir = shooter.side === 'player' ? -1 : 1; // toward shooter
+        // fresh occupancy map so we respect all current positions
+        const occ = buildOccupancy();
+        let steps = a.value;
+        while(steps > 0){
+          const nextQ = target.q + dir;
+            // attempt to move one hex; stop early if blocked
+          if(!tryMoveToHex(target, nextQ, target.r, occ)) break;
+          steps--;
+        }
+        a._used = true;
+      }
+      break;
+
+    case 'shieldPulse':
+      // No on-hit effect for shieldPulse (startBattle trigger already applied)
+      break;
+
+    default:
+      // other abilities (pierceShot, chain, etc.) handled elsewhere
+      break;
+  }
 }
+
 function findBehind(target,shooter,maxD){ const dir=shooter.side==='player'?1:-1; return state.battleShips.find(o=> o.alive && o.side!==shooter.side && o!==target && o.r===target.r && ((o.q-target.q)*dir>0) && Math.abs(o.q-target.q)<=maxD); }
 function findChainTarget(prev,shooter,set){ let best=null,d=Infinity; state.battleShips.forEach(e=>{ if(!e.alive||e.side===shooter.side||e.uid===prev.uid||set.has(e.uid)) return; const dist=hexDistanceQR(prev,e); if(dist<d && dist<=3){ d=dist; best=e; } }); return best; }
 
