@@ -720,24 +720,30 @@ function nextRound () {
   document.getElementById('roundNum').textContent  = state.round;
   updateGold();
 /* ===== 3.  RESTORE SURVIVORS IN THEIR ORIGINAL SLOTS ===== */
-state.gridHex.forEach((ship, key) => {
-  if (!ship.alive) {               // died last battle → clear slot
-    state.gridHex.delete(key);
-    return;
-  }
-  ship.q = ship.origQ;             // snap back to shop hex
-  ship.r = ship.origR;
-  const p  = axialToPixel(ship.q, ship.r);
-  ship.x = ship.targetX = p.x;     // put sprite back
-  ship.y = ship.targetY = p.y;
+{
+  const newGrid = new Map();          // fresh map for post‑battle shop
 
-  /* full heal & cleanse */
-  ship.hp        = effectiveMaxHP(ship);
-  ship.shield    = 0;
-  ship.burns     = [];
-  ship.slowMult  = 1;
-  ship.fireTimer = 0;
-});
+  state.gridHex.forEach((ship) => {
+    if (!ship.alive) return;          // died in the battle → leave behind
+
+    ship.q = ship.origQ;              // snap back to pre‑battle hex
+    ship.r = ship.origR;
+    const p  = axialToPixel(ship.q, ship.r);
+    ship.x = ship.targetX = p.x;
+    ship.y = ship.targetY = p.y;
+
+    /* full heal & cleanse */
+    ship.hp        = effectiveMaxHP(ship);
+    ship.shield    = 0;
+    ship.burns     = [];
+    ship.slowMult  = 1;
+    ship.fireTimer = 0;
+
+    newGrid.set(slotKey(ship.q, ship.r), ship);
+  });
+
+  state.gridHex = newGrid;            // swap in the rebuilt map
+}
 
 /* ===== 4. shop refresh & UI ===== */
 flashStatus('Round ' + state.round + ' – New shop.');
