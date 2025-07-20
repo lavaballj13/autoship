@@ -690,6 +690,7 @@ function nextRound () {
 
   /* ===== 1. advance round & basic UI labels  ===== */
   state.round++;
+  generateEnemyPreview(); 
   state.phase = 'shop';
 
   document.getElementById('phaseIndicator').textContent = 'SHOP';
@@ -788,7 +789,6 @@ const canvas=document.getElementById('battleCanvas'); const ctx=canvas.getContex
     previewEnemies.forEach(drawShip);   // re‑use existing ship renderer
     ctx.restore();
   }
-}
 
 
 
