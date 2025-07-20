@@ -269,10 +269,58 @@ function renderGrid(){ const wrap=document.getElementById('deploymentGrid'); wra
 
 function makeToken(ship){ const t=document.createElement('div'); t.className='token'; t.draggable=true; t.dataset.uid=ship.uid; t.innerHTML=`<div class='fusionBadge'>T${ship.tier} (${ship.copies}/${CONFIG.fusionCopies})</div><h5>${ship.name}</h5><div class='hp'>HP ${ship.hp}</div>`; t.addEventListener('dragstart',e=>{ dragType='grid'; draggingShipRef=ship; e.dataTransfer.effectAllowed='move'; }); t.addEventListener('dragend',()=>{ dragType=null; draggingShipRef=null; document.querySelectorAll('.deployCell').forEach(c=>c.classList.remove('drag-hover')); }); t.addEventListener('mousemove',e=> showShipTooltip(e,ship)); t.addEventListener('mouseleave',hideTooltip); return t; }
 
-function handleDropCell(c,r){ const existing=state.grid[r][c]; if(dragType==='shop' && draggingShopIndex!==null){ const tmpl=state.shopChoices[draggingShopIndex]; if(!tmpl) return; if(existing){ if(existing.type!==tmpl.hullId){ flashStatus('Different hull.',true); return; } if(!canAfford(tmpl.cost)){ flashStatus('Need gold.',true); return; } spendGold(tmpl.cost); tryAddCopy(existing);   }
-  else { if(teamCount()>=state.teamLimit){ flashStatus('Team limit reached.',true); return; } if(!canAfford(tmpl.cost)){ flashStatus('Need gold.',true); return; } state.grid[r][c]=createShip(tmpl); spendGold(tmpl.cost); flashStatus(`${tmpl.name} deployed.`);   updateBattleBtn(); }}
- else if(dragType==='grid' && draggingShipRef){ if(existing && existing!==draggingShipRef){ if(existing.type===draggingShipRef.type){ existing.copies += draggingShipRef.copies; while(existing.copies>=CONFIG.fusionCopies){ existing.copies-=CONFIG.fusionCopies; fuseShip(existing);} removeShipFromGrid(draggingShipRef.uid); flashStatus('Merged!',false); } else { swapShips(existing, draggingShipRef); } } else if(!existing){ moveShipTo(draggingShipRef,c,r); }   updateBattleBtn(); }
-function handleHexDrop(q,r){
+function handleDropCell(c, r) {
+  const existing = state.grid[r][c];
+
+  /* ---------- dragging a SHOP card onto the grid ---------- */
+  if (dragType === 'shop' && draggingShopIndex !== null) {
+    const tmpl = state.shopChoices[draggingShopIndex];
+    if (!tmpl) return;
+
+    if (existing) {
+      /* same hull → add copy / fuse */
+      if (existing.type !== tmpl.hullId) { flashStatus('Different hull.', true); return; }
+      if (!canAfford(tmpl.cost))        { flashStatus('Need gold.',   true);  return; }
+      spendGold(tmpl.cost);
+      tryAddCopy(existing);
+    } else {
+      /* empty cell → place new ship */
+      if (teamCount() >= state.teamLimit) { flashStatus('Team limit reached.', true); return; }
+      if (!canAfford(tmpl.cost))          { flashStatus('Need gold.',          true); return; }
+      state.grid[r][c] = createShip(tmpl);
+      spendGold(tmpl.cost);
+      flashStatus(`${tmpl.name} deployed.`);
+    }
+    updateBattleBtn();
+
+  /* ---------- dragging an EXISTING ship token ---------- */
+  } else if (dragType === 'grid' && draggingShipRef) {
+    if (existing && existing !== draggingShipRef) {
+      if (existing.type === draggingShipRef.type) {
+        /* same hull → merge / fuse */
+        existing.copies += draggingShipRef.copies;
+        while (existing.copies >= CONFIG.fusionCopies) {
+          existing.copies -= CONFIG.fusionCopies;
+          fuseShip(existing);
+        }
+        removeShipFromGrid(draggingShipRef.uid);
+        flashStatus('Merged!', false);
+      } else {
+        /* different hull → swap positions */
+        swapShips(existing, draggingShipRef);
+      }
+    } else if (!existing) {
+      /* empty cell → move ship */
+      moveShipTo(draggingShipRef, c, r);
+    }
+    updateBattleBtn();
+  }
+}
+
+/* ---------------------------------------------------------- */
+/*  NEXT FUNCTION STARTS HERE – keep this just as it is       */
+function handleHexDrop(q, r) {
+
   if(dragType === 'shop' && draggingShopIndex !== null){
     const tmpl = state.shopChoices[draggingShopIndex];
     if(!tmpl) return;
