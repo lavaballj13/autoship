@@ -273,10 +273,11 @@ function createGrid() {
   return g;
 }
 
-  /* --- helper: toggle hit‑testing on all token overlays --- */
-function disableAllTokenHitTests() {
+/* --- helper: while dragging, turn off hit‑testing on
+       every overlay *except* the element being dragged --- */
+function disableOtherTokenHitTests(dragEl) {
   document.querySelectorAll('#tokenLayer .token')
-          .forEach(el => el.style.pointerEvents = 'none');
+          .forEach(el => { if (el !== dragEl) el.style.pointerEvents = 'none'; });
 }
 function enableAllTokenHitTests() {
   document.querySelectorAll('#tokenLayer .token')
@@ -394,18 +395,19 @@ t.addEventListener('dragstart', e => {
   draggingShipRef = ship;
   e.dataTransfer.effectAllowed = 'move';
 
-  // turn off ALL token hit‑boxes so the canvas receives dragover / drop
-  disableAllTokenHitTests();
+  // only the other overlays go transparent; the one we’re dragging stays interactive
+  disableOtherTokenHitTests(t);
 });
+
 
 
 t.addEventListener('dragend', () => {
   dragType = null;
   draggingShipRef = null;
 
-  // restore hit‑testing
-  enableAllTokenHitTests();
+  enableAllTokenHitTests();   // restore everyone
 });
+
 
 
 
