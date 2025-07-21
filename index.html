@@ -393,14 +393,12 @@ function renderShop () {
       draggingShopIndex = i;
       dragType = 'shop';
       e.dataTransfer.effectAllowed = 'copy';
-      enableTokenDrop();           // turn layer hit‑testing ON
     });
 
     // ――― drag‑end ―――
     d.addEventListener('dragend', () => {
       draggingShopIndex = null;
-      dragType = null;
-      disableTokenDrop();          // turn layer hit‑testing back OFF
+      dragType = null;       // turn layer hit‑testing back OFF
     });
 
     // card content
