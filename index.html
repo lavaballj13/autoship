@@ -30,15 +30,20 @@
 /* Floating hover version for in-grid ship stat previews */
 .shipStatsCard.floating {
   position: absolute;
-  pointer-events: none;   /* allow interactions to pass through */
+  pointer-events: none;
   z-index: 1000;
+  max-width: 160px;
+  white-space: normal;
 }
+
 
 /* Stat table inside floating card */
 .shipStatsCard.floating table {
   width: 100%;
   font-size: 11px;
   line-height: 1.25;
+  table-layout: auto;
+  border-collapse: collapse;
 }
 .shipStatsCard.floating td:first-child {
   opacity: 0.75;
