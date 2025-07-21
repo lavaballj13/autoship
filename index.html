@@ -383,36 +383,43 @@ function makeToken (ship) {
   t.style.pointerEvents = 'auto';
   t.dataset.uid = ship.uid;
 
-    /* ↓ JUST this single badge now */
+  /* ↓ JUST this single badge now */
   t.innerHTML =
     `<div class="fusionBadge">T${ship.tier}</div>`;   // only show tier
 
+  /* Drag start */
+  t.addEventListener('dragstart', e => {
+    dragType = 'grid';
+    draggingShipRef = ship;
+    e.dataTransfer.effectAllowed = 'move';
 
-  /* keep the existing drag / hover listeners but
-     swap tooltip calls for our new stats‑panel helpers ↓ */
-t.addEventListener('dragstart', e => {
-  dragType = 'grid';
-  draggingShipRef = ship;
-  e.dataTransfer.effectAllowed = 'move';
+    // 🔴 REMOVE this line to allow drop events on other tokens:
+    // disableOtherTokenHitTests(t);
+  });
 
-  // only the other overlays go transparent; the one we’re dragging stays interactive
-  disableOtherTokenHitTests(t);
-});
+  /* Drag end */
+  t.addEventListener('dragend', () => {
+    dragType = null;
+    draggingShipRef = null;
+    enableAllTokenHitTests();   // restore everyone
+  });
 
+  /* Hover effects */
+  t.addEventListener('mouseenter', () => showShipStats(ship));
+  t.addEventListener('mouseleave',  clearShipStats);
 
+  /* ✅ NEW: allow direct drop onto this token */
+  t.addEventListener('dragover', e => {
+    if (!dragType) return;
+    e.preventDefault();  // this enables dropping
+  });
 
-t.addEventListener('dragend', () => {
-  dragType = null;
-  draggingShipRef = null;
+  t.addEventListener('drop', e => {
+    if (!dragType) return;
+    e.preventDefault();
+    handleHexDrop(ship.q, ship.r);  // treat drop as if on hex grid
+  });
 
-  enableAllTokenHitTests();   // restore everyone
-});
-
-
-
-
-  t.addEventListener('mouseenter', () => showShipStats(ship)); // NEW
-  t.addEventListener('mouseleave',  clearShipStats);           // NEW
   return t;
 }
 function showShipStats (ship){
