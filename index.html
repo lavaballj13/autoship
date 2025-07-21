@@ -439,6 +439,7 @@ function makeToken (ship) {
     dragType = 'grid';
     draggingShipRef = ship;
     e.dataTransfer.effectAllowed = 'move';
+    enableTokenDrop(); 
   });
 
   // === Drag end ===
