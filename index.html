@@ -1058,7 +1058,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
   canvasEl.addEventListener('dragover', e => {
     if (!dragType) return;
-    const hex = screenToHex(e.offsetX, e.offsetY);
+    // NEW – paste this in its place
+    const rect = canvasEl.getBoundingClientRect();
+    const hex  = screenToHex(e.clientX - rect.left, e.clientY - rect.top);
+
     if (!hex || !isLegalShopHex(hex.q, hex.r)) return;
     e.preventDefault();
     hoverHex = hex;
