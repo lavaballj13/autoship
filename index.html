@@ -375,7 +375,6 @@ function renderGrid(){ const wrap=document.getElementById('deploymentGrid'); wra
   cell.addEventListener('dragleave',()=> cell.classList.remove('drag-hover'));
   cell.addEventListener('drop', e=>{ e.preventDefault(); cell.classList.remove('drag-hover'); handleDropCell(c,r); });
   wrap.appendChild(cell); }} }
-
 function makeToken (ship) {
   const t = document.createElement('div');
   t.className = 'token';
@@ -387,37 +386,36 @@ function makeToken (ship) {
   t.innerHTML =
     `<div class="fusionBadge">T${ship.tier}</div>`;   // only show tier
 
-  /* Drag start */
+  // === Drag start ===
   t.addEventListener('dragstart', e => {
     dragType = 'grid';
     draggingShipRef = ship;
     e.dataTransfer.effectAllowed = 'move';
-
-    // 🔴 REMOVE this line to allow drop events on other tokens:
+    // 👇 this line is removed so drop targets remain active
     // disableOtherTokenHitTests(t);
   });
 
-  /* Drag end */
+  // === Drag end ===
   t.addEventListener('dragend', () => {
     dragType = null;
     draggingShipRef = null;
     enableAllTokenHitTests();   // restore everyone
   });
 
-  /* Hover effects */
+  // === Hover to show floating stats panel ===
   t.addEventListener('mouseenter', () => showShipStats(ship));
   t.addEventListener('mouseleave',  clearShipStats);
 
-  /* ✅ NEW: allow direct drop onto this token */
+  // === ✅ NEW: allow ship to be a drop target ===
   t.addEventListener('dragover', e => {
     if (!dragType) return;
-    e.preventDefault();  // this enables dropping
+    e.preventDefault(); // make this a valid drop target
   });
 
   t.addEventListener('drop', e => {
     if (!dragType) return;
     e.preventDefault();
-    handleHexDrop(ship.q, ship.r);  // treat drop as if on hex grid
+    handleHexDrop(ship.q, ship.r); // treat as drop on that hex
   });
 
   return t;
