@@ -273,7 +273,16 @@ function createGrid() {
   return g;
 }
 
-/* Utility Functions */
+  /* --- helper: toggle hit‑testing on all token overlays --- */
+function disableAllTokenHitTests() {
+  document.querySelectorAll('#tokenLayer .token')
+          .forEach(el => el.style.pointerEvents = 'none');
+}
+function enableAllTokenHitTests() {
+  document.querySelectorAll('#tokenLayer .token')
+          .forEach(el => el.style.pointerEvents = 'auto');
+}
+
 
 /* Utility Functions */
 function randChoice(a){return a[Math.floor(Math.random()*a.length)];}
@@ -385,15 +394,19 @@ t.addEventListener('dragstart', e => {
   draggingShipRef = ship;
   e.dataTransfer.effectAllowed = 'move';
 
-  /* Wait one tick, then let the canvas handle the drop target */
-  setTimeout(() => { t.style.pointerEvents = 'none'; }, 0);
+  // turn off ALL token hit‑boxes so the canvas receives dragover / drop
+  disableAllTokenHitTests();
 });
+
 
 t.addEventListener('dragend', () => {
   dragType = null;
   draggingShipRef = null;
-  t.style.pointerEvents = 'auto';      // re‑enable for next move
+
+  // restore hit‑testing
+  enableAllTokenHitTests();
 });
+
 
 
   t.addEventListener('mouseenter', () => showShipStats(ship)); // NEW
